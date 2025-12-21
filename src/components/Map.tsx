@@ -109,12 +109,13 @@ export const Map = memo(function Map({ stops, onStopClick }: MapProps) {
   const routeCoords: [number, number][] = routeStops.map(s => [s.latitude, s.longitude]);
 
   return (
-    <MapContainer
-      center={stops.length > 0 ? [stops[0].latitude, stops[0].longitude] : defaultCenter}
-      zoom={defaultZoom}
-      className="w-full h-full"
-      style={{ background: '#f4f4f5' }}
-    >
+    <div className="w-full h-full isolate">
+      <MapContainer
+        center={stops.length > 0 ? [stops[0].latitude, stops[0].longitude] : defaultCenter}
+        zoom={defaultZoom}
+        className="w-full h-full"
+        style={{ background: '#f4f4f5' }}
+      >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -166,5 +167,6 @@ export const Map = memo(function Map({ stops, onStopClick }: MapProps) {
       {/* Fit bounds when stops change */}
       {stops.length > 0 && <FitBounds stops={stops} />}
     </MapContainer>
+    </div>
   );
 });
