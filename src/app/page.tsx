@@ -85,13 +85,18 @@ export default function Home() {
   const fetchTrips = useCallback(async () => {
     try {
       const res = await fetch('/api/trips');
+      if (!res.ok) {
+        throw new Error('Failed to fetch trips');
+      }
       const data = await res.json();
-      setTrips(data);
+      // Ensure data is an array
+      const tripsArray = Array.isArray(data) ? data : [];
+      setTrips(tripsArray);
 
       // Auto-select first trip if none selected (use functional update to avoid stale closure)
       setSelectedTripId(current => {
-        if (data.length > 0 && !current) {
-          return data[0].id;
+        if (tripsArray.length > 0 && !current) {
+          return tripsArray[0].id;
         }
         return current;
       });
