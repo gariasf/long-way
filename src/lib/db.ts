@@ -178,7 +178,7 @@ export function createStop(tripId: string, data: CreateStopRequest): Stop {
     );
 
     // Update trip's updated_at
-    db.prepare('UPDATE trips SET updated_at = datetime("now") WHERE id = ?').run(tripId);
+    db.prepare('UPDATE trips SET updated_at = datetime('now') WHERE id = ?').run(tripId);
   });
 
   transaction();
@@ -218,7 +218,7 @@ export function updateStop(id: string, updates: UpdateStopRequest): Stop | undef
     db.prepare(`UPDATE stops SET ${fields.join(', ')} WHERE id = ?`).run(...values);
 
     // Update trip's updated_at
-    db.prepare('UPDATE trips SET updated_at = datetime("now") WHERE id = ?').run(stop.trip_id);
+    db.prepare('UPDATE trips SET updated_at = datetime('now') WHERE id = ?').run(stop.trip_id);
   });
 
   transaction();
@@ -239,7 +239,7 @@ export function deleteStop(id: string): boolean {
 
     if (deleted) {
       // Update trip's updated_at
-      db.prepare('UPDATE trips SET updated_at = datetime("now") WHERE id = ?').run(tripId);
+      db.prepare('UPDATE trips SET updated_at = datetime('now') WHERE id = ?').run(tripId);
     }
   });
 
@@ -255,7 +255,7 @@ export function reorderStops(tripId: string, stopIds: string[]): boolean {
     for (let i = 0; i < stopIds.length; i++) {
       updateStmt.run(i, stopIds[i], tripId);
     }
-    db.prepare('UPDATE trips SET updated_at = datetime("now") WHERE id = ?').run(tripId);
+    db.prepare('UPDATE trips SET updated_at = datetime('now') WHERE id = ?').run(tripId);
   });
 
   transaction();
