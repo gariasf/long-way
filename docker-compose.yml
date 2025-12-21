@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  longway:
+    build: .
+    container_name: longway
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - longway-data:/app/data
+    environment:
+      - NODE_ENV=production
+      - DATABASE_PATH=/app/data/longway.db
+
+volumes:
+  longway-data:
