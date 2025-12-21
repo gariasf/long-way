@@ -75,6 +75,10 @@ export function StopForm({ tripId, stop, onSave, onCancel }: StopFormProps) {
   const [departureLocation, setDepartureLocation] = useState(stop?.departure_location || '');
   const [arrivalLocation, setArrivalLocation] = useState(stop?.arrival_location || '');
 
+  // Day planning (optional)
+  const [dayStart, setDayStart] = useState(stop?.day_start?.toString() || '');
+  const [dayEnd, setDayEnd] = useState(stop?.day_end?.toString() || '');
+
   // Location search state
   const [locationQuery, setLocationQuery] = useState('');
   const [searchResults, setSearchResults] = useState<NominatimResult[]>([]);
@@ -203,6 +207,8 @@ export function StopForm({ tripId, stop, onSave, onCancel }: StopFormProps) {
         arrival_time: type === 'transport' ? arrivalTime || undefined : undefined,
         departure_location: type === 'transport' ? departureLocation || undefined : undefined,
         arrival_location: type === 'transport' ? arrivalLocation || undefined : undefined,
+        day_start: dayStart ? parseInt(dayStart) : null,
+        day_end: dayEnd ? parseInt(dayEnd) : null,
       };
 
       let res: Response;
@@ -361,6 +367,41 @@ export function StopForm({ tripId, stop, onSave, onCancel }: StopFormProps) {
                 <option value="nights">nights</option>
                 <option value="days">days</option>
               </select>
+            </div>
+          </div>
+
+          {/* Day planning (optional) */}
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="block text-sm font-medium mb-1">
+                Day <span className="text-zinc-400 font-normal">(optional)</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  value={dayStart}
+                  onChange={(e) => {
+                    setDayStart(e.target.value);
+                    // Auto-fill day_end if empty
+                    if (!dayEnd && e.target.value) {
+                      setDayEnd(e.target.value);
+                    }
+                  }}
+                  className="w-20 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-800"
+                  placeholder="1"
+                  min="1"
+                />
+                <span className="text-zinc-500">to</span>
+                <input
+                  type="number"
+                  value={dayEnd}
+                  onChange={(e) => setDayEnd(e.target.value)}
+                  className="w-20 px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-800"
+                  placeholder="1"
+                  min="1"
+                />
+              </div>
+              <p className="mt-1 text-xs text-zinc-400">Leave empty for flexible planning</p>
             </div>
           </div>
 

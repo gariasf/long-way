@@ -510,6 +510,16 @@ export default function Home() {
 
                                 <div className="flex items-center gap-2 mt-1 text-xs text-zinc-400">
                                   <span className="capitalize">{stop.type.replace('_', ' ')}</span>
+                                  {stop.day_start && (
+                                    <>
+                                      <span>•</span>
+                                      <span className="text-blue-500 font-medium">
+                                        {stop.day_start === stop.day_end || !stop.day_end
+                                          ? `Day ${stop.day_start}`
+                                          : `Days ${stop.day_start}-${stop.day_end}`}
+                                      </span>
+                                    </>
+                                  )}
                                   {stop.duration_value && stop.duration_unit && (
                                     <>
                                       <span>•</span>

@@ -55,6 +55,9 @@ export const createStopSchema = z.object({
   arrival_time: z.string().optional(),
   departure_location: z.string().max(MAX_NAME_LENGTH).optional(),
   arrival_location: z.string().max(MAX_NAME_LENGTH).optional(),
+  // Optional day planning (null = not assigned to specific days)
+  day_start: z.number().int().min(1).max(365).nullable().optional(),
+  day_end: z.number().int().min(1).max(365).nullable().optional(),
 });
 
 export const updateStopSchema = z.object({
@@ -75,6 +78,8 @@ export const updateStopSchema = z.object({
   arrival_time: z.string().optional(),
   departure_location: z.string().max(MAX_NAME_LENGTH).optional(),
   arrival_location: z.string().max(MAX_NAME_LENGTH).optional(),
+  day_start: z.number().int().min(1).max(365).nullable().optional(),
+  day_end: z.number().int().min(1).max(365).nullable().optional(),
 });
 
 // Reorder schema
@@ -147,6 +152,8 @@ export interface Stop {
   arrival_time: string | null;
   departure_location: string | null;
   arrival_location: string | null;
+  day_start: number | null;
+  day_end: number | null;
 }
 
 export interface Message {
@@ -184,6 +191,8 @@ export interface StopRow {
   arrival_time: string | null;
   departure_location: string | null;
   arrival_location: string | null;
+  day_start: number | null;
+  day_end: number | null;
 }
 
 // Helper function to convert database row to Stop

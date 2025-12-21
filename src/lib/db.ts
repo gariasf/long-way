@@ -54,6 +54,8 @@ function initializeSchema(database: Database.Database): void {
       arrival_time TEXT,
       departure_location TEXT,
       arrival_location TEXT,
+      day_start INTEGER,
+      day_end INTEGER,
       FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE
     );
 
@@ -75,6 +77,16 @@ function initializeSchema(database: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_stops_order ON stops(trip_id, "order");
     CREATE INDEX IF NOT EXISTS idx_conversations_trip_id ON conversations(trip_id);
   `);
+
+  // Migration: Add day_start and day_end columns if they don't exist
+  const columns = database.prepare("PRAGMA table_info(stops)").all() as Array<{ name: string }>;
+  const columnNames = columns.map(c => c.name);
+  if (!columnNames.includes('day_start')) {
+    database.exec('ALTER TABLE stops ADD COLUMN day_start INTEGER');
+  }
+  if (!columnNames.includes('day_end')) {
+    database.exec('ALTER TABLE stops ADD COLUMN day_end INTEGER');
+  }
 }
 
 // Trip operations
@@ -153,8 +165,9 @@ export function createStop(tripId: string, data: CreateStopRequest): Stop {
       INSERT INTO stops (
         id, trip_id, name, type, description, latitude, longitude,
         duration_value, duration_unit, is_optional, tags, links, notes, "order",
-        transport_type, departure_time, arrival_time, departure_location, arrival_location
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        transport_type, departure_time, arrival_time, departure_location, arrival_location,
+        day_start, day_end
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       tripId,
@@ -174,7 +187,9 @@ export function createStop(tripId: string, data: CreateStopRequest): Stop {
       data.departure_time || null,
       data.arrival_time || null,
       data.departure_location || null,
-      data.arrival_location || null
+      data.arrival_location || null,
+      data.day_start ?? null,
+      data.day_end ?? null
     );
 
     // Update trip's updated_at
@@ -210,6 +225,8 @@ export function updateStop(id: string, updates: UpdateStopRequest): Stop | undef
   if (updates.arrival_time !== undefined) { fields.push('arrival_time = ?'); values.push(updates.arrival_time); }
   if (updates.departure_location !== undefined) { fields.push('departure_location = ?'); values.push(updates.departure_location); }
   if (updates.arrival_location !== undefined) { fields.push('arrival_location = ?'); values.push(updates.arrival_location); }
+  if (updates.day_start !== undefined) { fields.push('day_start = ?'); values.push(updates.day_start); }
+  if (updates.day_end !== undefined) { fields.push('day_end = ?'); values.push(updates.day_end); }
 
   if (fields.length === 0) return stop;
 
