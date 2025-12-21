@@ -1,14 +1,26 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import { TripSelector } from '@/components/TripSelector';
 import { Trip, Stop } from '@/lib/types';
+
+// Dynamic import for Map to avoid SSR issues with Leaflet
+const Map = dynamic(() => import('@/components/Map').then(mod => ({ default: mod.Map })), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center">
+      <div className="text-zinc-500">Loading map...</div>
+    </div>
+  ),
+});
 
 export default function Home() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [stops, setStops] = useState<Stop[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedStop, setSelectedStop] = useState<Stop | null>(null);
 
   // Fetch all trips
   const fetchTrips = useCallback(async () => {
@@ -77,6 +89,10 @@ export default function Home() {
     }
   };
 
+  const handleStopClick = (stop: Stop) => {
+    setSelectedStop(stop);
+  };
+
   const selectedTrip = trips.find(t => t.id === selectedTripId);
 
   if (loading) {
@@ -113,15 +129,9 @@ export default function Home() {
       <main className="flex flex-1 overflow-hidden">
         {selectedTrip ? (
           <>
-            {/* Map area (placeholder for Phase 2) */}
-            <div className="flex-1 bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center">
-              <div className="text-center text-zinc-500 dark:text-zinc-400">
-                <svg className="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-                </svg>
-                <p className="text-lg font-medium">Map coming in Phase 2</p>
-                <p className="text-sm">Stops will appear here</p>
-              </div>
+            {/* Map area */}
+            <div className="flex-1">
+              <Map stops={stops} onStopClick={handleStopClick} />
             </div>
 
             {/* Sidebar */}
@@ -148,10 +158,13 @@ export default function Home() {
                     {stops.map((stop, index) => (
                       <div
                         key={stop.id}
-                        className={`p-3 rounded-lg border ${
-                          stop.is_optional
-                            ? 'border-dashed border-zinc-300 dark:border-zinc-600'
-                            : 'border-zinc-200 dark:border-zinc-700'
+                        onClick={() => setSelectedStop(stop)}
+                        className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                          selectedStop?.id === stop.id
+                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                            : stop.is_optional
+                            ? 'border-dashed border-zinc-300 dark:border-zinc-600 hover:border-zinc-400'
+                            : 'border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600'
                         } bg-white dark:bg-zinc-800`}
                       >
                         <div className="flex items-start gap-3">
