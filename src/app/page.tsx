@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { TripSelector } from '@/components/TripSelector';
 import { StopForm } from '@/components/StopForm';
@@ -19,6 +19,13 @@ const Map = dynamic(() => import('@/components/Map').then(mod => ({ default: mod
 });
 
 type SidebarTab = 'timeline' | 'chat';
+type StopFilter = 'all' | 'base_camp' | 'waypoint' | 'stop' | 'transport' | 'optional';
+
+// Helper to open stop in Google Maps
+function openInGoogleMaps(stop: Stop) {
+  const url = `https://www.google.com/maps/search/?api=1&query=${stop.latitude},${stop.longitude}`;
+  window.open(url, '_blank');
+}
 
 export default function Home() {
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -30,6 +37,10 @@ export default function Home() {
   // Sidebar tab state
   const [activeTab, setActiveTab] = useState<SidebarTab>('timeline');
 
+  // Filter state
+  const [stopFilter, setStopFilter] = useState<StopFilter>('all');
+  const [tagFilter, setTagFilter] = useState<string>('');
+
   // Form state
   const [showStopForm, setShowStopForm] = useState(false);
   const [editingStop, setEditingStop] = useState<Stop | undefined>(undefined);
@@ -40,6 +51,27 @@ export default function Home() {
   // Drag and drop state
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  // Get all unique tags from stops
+  const allTags = useMemo(() => {
+    const tags = new Set<string>();
+    stops.forEach(stop => stop.tags?.forEach(tag => tags.add(tag)));
+    return Array.from(tags).sort();
+  }, [stops]);
+
+  // Filtered stops based on type and tag filters
+  const filteredStops = useMemo(() => {
+    return stops.filter(stop => {
+      // Type filter
+      if (stopFilter === 'optional' && !stop.is_optional) return false;
+      if (stopFilter !== 'all' && stopFilter !== 'optional' && stop.type !== stopFilter) return false;
+
+      // Tag filter
+      if (tagFilter && (!stop.tags || !stop.tags.includes(tagFilter))) return false;
+
+      return true;
+    });
+  }, [stops, stopFilter, tagFilter]);
 
   // Fetch all trips
   const fetchTrips = useCallback(async () => {
@@ -270,6 +302,47 @@ export default function Home() {
               {/* Tab content */}
               {activeTab === 'timeline' ? (
                 <>
+                  {/* Filter controls */}
+                  <div className="p-3 border-b border-zinc-200 dark:border-zinc-800 space-y-2">
+                    <div className="flex gap-2">
+                      <select
+                        value={stopFilter}
+                        onChange={(e) => setStopFilter(e.target.value as StopFilter)}
+                        className="flex-1 px-2 py-1.5 text-sm border border-zinc-300 dark:border-zinc-600 rounded bg-white dark:bg-zinc-800"
+                      >
+                        <option value="all">All types</option>
+                        <option value="base_camp">Base Camps</option>
+                        <option value="waypoint">Waypoints</option>
+                        <option value="stop">Stops</option>
+                        <option value="transport">Transport</option>
+                        <option value="optional">Optional only</option>
+                      </select>
+                      {allTags.length > 0 && (
+                        <select
+                          value={tagFilter}
+                          onChange={(e) => setTagFilter(e.target.value)}
+                          className="flex-1 px-2 py-1.5 text-sm border border-zinc-300 dark:border-zinc-600 rounded bg-white dark:bg-zinc-800"
+                        >
+                          <option value="">All tags</option>
+                          {allTags.map(tag => (
+                            <option key={tag} value={tag}>{tag}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                    {(stopFilter !== 'all' || tagFilter) && (
+                      <div className="flex items-center justify-between text-xs text-zinc-500">
+                        <span>Showing {filteredStops.length} of {stops.length} stops</span>
+                        <button
+                          onClick={() => { setStopFilter('all'); setTagFilter(''); }}
+                          className="text-blue-500 hover:text-blue-600"
+                        >
+                          Clear filters
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Timeline content */}
                   <div className="flex-1 overflow-y-auto p-4">
                     {stops.length === 0 ? (
@@ -277,20 +350,32 @@ export default function Home() {
                         <p className="mb-2">No stops yet</p>
                         <p className="text-sm">Add your first stop to start planning</p>
                       </div>
+                    ) : filteredStops.length === 0 ? (
+                      <div className="text-center text-zinc-500 dark:text-zinc-400 py-8">
+                        <p className="mb-2">No stops match filters</p>
+                        <button
+                          onClick={() => { setStopFilter('all'); setTagFilter(''); }}
+                          className="text-sm text-blue-500 hover:text-blue-600"
+                        >
+                          Clear filters
+                        </button>
+                      </div>
                     ) : (
                       <div className="space-y-2">
-                        {stops.map((stop, index) => (
+                        {filteredStops.map((stop) => {
+                          const originalIndex = stops.findIndex(s => s.id === stop.id);
+                          return (
                           <div
                             key={stop.id}
                             draggable
-                            onDragStart={() => handleDragStart(index)}
-                            onDragOver={(e) => handleDragOver(e, index)}
+                            onDragStart={() => handleDragStart(originalIndex)}
+                            onDragOver={(e) => handleDragOver(e, originalIndex)}
                             onDragEnd={handleDragEnd}
                             onClick={() => setSelectedStop(stop)}
                             className={`group p-3 rounded-lg border cursor-pointer transition-all ${
-                              dragOverIndex === index ? 'border-blue-400 border-2' : ''
+                              dragOverIndex === originalIndex ? 'border-blue-400 border-2' : ''
                             } ${
-                              draggedIndex === index ? 'opacity-50' : ''
+                              draggedIndex === originalIndex ? 'opacity-50' : ''
                             } ${
                               selectedStop?.id === stop.id
                                 ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
@@ -314,7 +399,7 @@ export default function Home() {
                                 stop.type === 'transport' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300' :
                                 'bg-zinc-100 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300'
                               }`}>
-                                {index + 1}
+                                {originalIndex + 1}
                               </div>
 
                               {/* Stop info */}
@@ -325,6 +410,33 @@ export default function Home() {
                                     {stop.description}
                                   </p>
                                 )}
+
+                                {/* Transport-specific details */}
+                                {stop.type === 'transport' && (stop.departure_location || stop.arrival_location) && (
+                                  <div className="flex items-center gap-1 mt-1 text-xs text-purple-600 dark:text-purple-400">
+                                    {stop.transport_type && (
+                                      <span className="capitalize">{stop.transport_type}</span>
+                                    )}
+                                    {stop.departure_location && stop.arrival_location && (
+                                      <>
+                                        <span>:</span>
+                                        <span>{stop.departure_location}</span>
+                                        <span>→</span>
+                                        <span>{stop.arrival_location}</span>
+                                      </>
+                                    )}
+                                    {(stop.departure_time || stop.arrival_time) && (
+                                      <span className="text-zinc-400 ml-1">
+                                        {stop.departure_time && stop.arrival_time
+                                          ? `(${stop.departure_time} - ${stop.arrival_time})`
+                                          : stop.departure_time
+                                          ? `(dep: ${stop.departure_time})`
+                                          : `(arr: ${stop.arrival_time})`}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+
                                 <div className="flex items-center gap-2 mt-1 text-xs text-zinc-400">
                                   <span className="capitalize">{stop.type.replace('_', ' ')}</span>
                                   {stop.duration_value && stop.duration_unit && (
@@ -340,10 +452,35 @@ export default function Home() {
                                     </>
                                   )}
                                 </div>
+
+                                {/* Tags */}
+                                {stop.tags && stop.tags.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-1.5">
+                                    {stop.tags.map(tag => (
+                                      <span
+                                        key={tag}
+                                        onClick={(e) => { e.stopPropagation(); setTagFilter(tag); }}
+                                        className="px-1.5 py-0.5 text-xs bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 rounded cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-600"
+                                      >
+                                        {tag}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
 
                               {/* Action buttons */}
                               <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); openInGoogleMaps(stop); }}
+                                  className="p-1 text-zinc-400 hover:text-green-500"
+                                  title="Open in Google Maps"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  </svg>
+                                </button>
                                 <button
                                   onClick={(e) => { e.stopPropagation(); handleEditStop(stop); }}
                                   className="p-1 text-zinc-400 hover:text-blue-500"
@@ -365,7 +502,7 @@ export default function Home() {
                               </div>
                             </div>
                           </div>
-                        ))}
+                        )})}
                       </div>
                     )}
                   </div>
