@@ -142,37 +142,40 @@ export function createStop(tripId: string, data: CreateStopRequest): Stop {
   const id = uuidv4();
   const order = data.order ?? getNextOrder(tripId);
 
-  db.prepare(`
-    INSERT INTO stops (
-      id, trip_id, name, type, description, latitude, longitude,
-      duration_value, duration_unit, is_optional, tags, links, notes, "order",
-      transport_type, departure_time, arrival_time, departure_location, arrival_location
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    id,
-    tripId,
-    data.name,
-    data.type,
-    data.description || null,
-    data.latitude,
-    data.longitude,
-    data.duration_value ?? null,
-    data.duration_unit ?? null,
-    data.is_optional ? 1 : 0,
-    JSON.stringify(data.tags || []),
-    JSON.stringify(data.links || []),
-    data.notes || null,
-    order,
-    data.transport_type || null,
-    data.departure_time || null,
-    data.arrival_time || null,
-    data.departure_location || null,
-    data.arrival_location || null
-  );
+  const transaction = db.transaction(() => {
+    db.prepare(`
+      INSERT INTO stops (
+        id, trip_id, name, type, description, latitude, longitude,
+        duration_value, duration_unit, is_optional, tags, links, notes, "order",
+        transport_type, departure_time, arrival_time, departure_location, arrival_location
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      tripId,
+      data.name,
+      data.type,
+      data.description || null,
+      data.latitude,
+      data.longitude,
+      data.duration_value ?? null,
+      data.duration_unit ?? null,
+      data.is_optional ? 1 : 0,
+      JSON.stringify(data.tags || []),
+      JSON.stringify(data.links || []),
+      data.notes || null,
+      order,
+      data.transport_type || null,
+      data.departure_time || null,
+      data.arrival_time || null,
+      data.departure_location || null,
+      data.arrival_location || null
+    );
 
-  // Update trip's updated_at
-  db.prepare('UPDATE trips SET updated_at = datetime("now") WHERE id = ?').run(tripId);
+    // Update trip's updated_at
+    db.prepare('UPDATE trips SET updated_at = datetime("now") WHERE id = ?').run(tripId);
+  });
 
+  transaction();
   return getStopById(id)!;
 }
 
@@ -204,12 +207,15 @@ export function updateStop(id: string, updates: UpdateStopRequest): Stop | undef
 
   if (fields.length === 0) return stop;
 
-  values.push(id);
-  db.prepare(`UPDATE stops SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+  const transaction = db.transaction(() => {
+    values.push(id);
+    db.prepare(`UPDATE stops SET ${fields.join(', ')} WHERE id = ?`).run(...values);
 
-  // Update trip's updated_at
-  db.prepare('UPDATE trips SET updated_at = datetime("now") WHERE id = (SELECT trip_id FROM stops WHERE id = ?)').run(id);
+    // Update trip's updated_at
+    db.prepare('UPDATE trips SET updated_at = datetime("now") WHERE id = ?').run(stop.trip_id);
+  });
 
+  transaction();
   return getStopById(id);
 }
 
@@ -219,14 +225,20 @@ export function deleteStop(id: string): boolean {
   if (!stop) return false;
 
   const tripId = stop.trip_id;
-  const result = db.prepare('DELETE FROM stops WHERE id = ?').run(id);
+  let deleted = false;
 
-  if (result.changes > 0) {
-    // Update trip's updated_at
-    db.prepare('UPDATE trips SET updated_at = datetime("now") WHERE id = ?').run(tripId);
-  }
+  const transaction = db.transaction(() => {
+    const result = db.prepare('DELETE FROM stops WHERE id = ?').run(id);
+    deleted = result.changes > 0;
 
-  return result.changes > 0;
+    if (deleted) {
+      // Update trip's updated_at
+      db.prepare('UPDATE trips SET updated_at = datetime("now") WHERE id = ?').run(tripId);
+    }
+  });
+
+  transaction();
+  return deleted;
 }
 
 export function reorderStops(tripId: string, stopIds: string[]): boolean {

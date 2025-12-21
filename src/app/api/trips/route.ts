@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllTrips, createTrip } from '@/lib/db';
-import { CreateTripRequest } from '@/lib/types';
+import { validateString, MAX_NAME_LENGTH, MAX_DESCRIPTION_LENGTH } from '@/lib/validation';
 
 // GET /api/trips - List all trips
 export async function GET() {
@@ -16,10 +16,18 @@ export async function GET() {
 // POST /api/trips - Create a new trip
 export async function POST(request: NextRequest) {
   try {
-    const body: CreateTripRequest = await request.json();
+    const body = await request.json();
 
-    if (!body.name || typeof body.name !== 'string' || body.name.trim() === '') {
-      return NextResponse.json({ error: 'Trip name is required' }, { status: 400 });
+    // Validate name
+    const nameError = validateString(body.name, 'Name', MAX_NAME_LENGTH, true);
+    if (nameError) {
+      return NextResponse.json({ error: nameError.message }, { status: 400 });
+    }
+
+    // Validate description
+    const descError = validateString(body.description, 'Description', MAX_DESCRIPTION_LENGTH);
+    if (descError) {
+      return NextResponse.json({ error: descError.message }, { status: 400 });
     }
 
     const trip = createTrip(body.name.trim(), body.description?.trim());

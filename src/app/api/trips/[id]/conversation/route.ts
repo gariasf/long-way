@@ -3,6 +3,41 @@ import { getConversation, saveConversation, clearConversation, getTripById } fro
 
 type RouteContext = { params: Promise<{ id: string }> };
 
+const MAX_MESSAGES = 1000;
+const MAX_MESSAGE_CONTENT_LENGTH = 50000;
+
+// Validate message structure
+function validateMessages(messages: unknown): string | null {
+  if (!Array.isArray(messages)) {
+    return 'Messages must be an array';
+  }
+
+  if (messages.length > MAX_MESSAGES) {
+    return `Too many messages (max ${MAX_MESSAGES})`;
+  }
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (!msg || typeof msg !== 'object') {
+      return `Message ${i} is invalid`;
+    }
+
+    if (!['user', 'assistant'].includes(msg.role)) {
+      return `Message ${i} has invalid role`;
+    }
+
+    if (typeof msg.content !== 'string') {
+      return `Message ${i} content must be a string`;
+    }
+
+    if (msg.content.length > MAX_MESSAGE_CONTENT_LENGTH) {
+      return `Message ${i} content is too long`;
+    }
+  }
+
+  return null;
+}
+
 // GET /api/trips/[id]/conversation - Get conversation history
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
@@ -32,6 +67,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const trip = getTripById(tripId);
     if (!trip) {
       return NextResponse.json({ error: 'Trip not found' }, { status: 404 });
+    }
+
+    // Validate messages
+    const validationError = validateMessages(messages);
+    if (validationError) {
+      return NextResponse.json({ error: validationError }, { status: 400 });
     }
 
     saveConversation(tripId, messages);

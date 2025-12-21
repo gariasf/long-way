@@ -1,6 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getStopById, updateStop, deleteStop } from '@/lib/db';
 import { UpdateStopRequest } from '@/lib/types';
+import {
+  validateString,
+  validateCoordinates,
+  validateStopType,
+  validateTransportType,
+  validateDurationUnit,
+  validateArray,
+  validateNumber,
+  MAX_NAME_LENGTH,
+  MAX_DESCRIPTION_LENGTH,
+  MAX_NOTES_LENGTH,
+  MAX_ARRAY_LENGTH,
+  MAX_TAG_LENGTH,
+  MAX_LINK_LENGTH,
+} from '@/lib/validation';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -25,7 +40,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 export async function PUT(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
-    const body: UpdateStopRequest = await request.json();
+    const body = await request.json();
 
     const existing = getStopById(id);
     if (!existing) {
@@ -33,20 +48,82 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     }
 
     // Validate fields if provided
-    if (body.type !== undefined && !['base_camp', 'waypoint', 'stop', 'transport'].includes(body.type)) {
-      return NextResponse.json({ error: 'Invalid stop type' }, { status: 400 });
+    if (body.name !== undefined) {
+      const nameError = validateString(body.name, 'Name', MAX_NAME_LENGTH, true);
+      if (nameError) {
+        return NextResponse.json({ error: nameError.message }, { status: 400 });
+      }
     }
-    if (body.duration_unit !== undefined && !['hours', 'nights', 'days'].includes(body.duration_unit)) {
-      return NextResponse.json({ error: 'Invalid duration unit' }, { status: 400 });
+
+    if (body.type !== undefined) {
+      const typeError = validateStopType(body.type);
+      if (typeError) {
+        return NextResponse.json({ error: typeError.message }, { status: 400 });
+      }
     }
-    if (body.transport_type !== undefined && body.transport_type !== null &&
-        !['ferry', 'flight', 'train', 'bus'].includes(body.transport_type)) {
-      return NextResponse.json({ error: 'Invalid transport type' }, { status: 400 });
+
+    if (body.latitude !== undefined || body.longitude !== undefined) {
+      const lat = body.latitude ?? existing.latitude;
+      const lng = body.longitude ?? existing.longitude;
+      const coordError = validateCoordinates(lat, lng);
+      if (coordError) {
+        return NextResponse.json({ error: coordError.message }, { status: 400 });
+      }
+    }
+
+    if (body.description !== undefined) {
+      const descError = validateString(body.description, 'Description', MAX_DESCRIPTION_LENGTH);
+      if (descError) {
+        return NextResponse.json({ error: descError.message }, { status: 400 });
+      }
+    }
+
+    if (body.notes !== undefined) {
+      const notesError = validateString(body.notes, 'Notes', MAX_NOTES_LENGTH);
+      if (notesError) {
+        return NextResponse.json({ error: notesError.message }, { status: 400 });
+      }
+    }
+
+    if (body.transport_type !== undefined) {
+      const transportTypeError = validateTransportType(body.transport_type);
+      if (transportTypeError) {
+        return NextResponse.json({ error: transportTypeError.message }, { status: 400 });
+      }
+    }
+
+    if (body.duration_unit !== undefined) {
+      const durationUnitError = validateDurationUnit(body.duration_unit);
+      if (durationUnitError) {
+        return NextResponse.json({ error: durationUnitError.message }, { status: 400 });
+      }
+    }
+
+    if (body.duration_value !== undefined) {
+      const durationError = validateNumber(body.duration_value, 'Duration', 0, 365);
+      if (durationError) {
+        return NextResponse.json({ error: durationError.message }, { status: 400 });
+      }
+    }
+
+    if (body.tags !== undefined) {
+      const tagsError = validateArray(body.tags, 'Tags', MAX_ARRAY_LENGTH, MAX_TAG_LENGTH);
+      if (tagsError) {
+        return NextResponse.json({ error: tagsError.message }, { status: 400 });
+      }
+    }
+
+    if (body.links !== undefined) {
+      const linksError = validateArray(body.links, 'Links', MAX_ARRAY_LENGTH, MAX_LINK_LENGTH);
+      if (linksError) {
+        return NextResponse.json({ error: linksError.message }, { status: 400 });
+      }
     }
 
     const updates: UpdateStopRequest = { ...body };
     if (body.name !== undefined) updates.name = body.name.trim();
     if (body.description !== undefined) updates.description = body.description?.trim();
+    if (body.notes !== undefined) updates.notes = body.notes?.trim();
 
     const stop = updateStop(id, updates);
     return NextResponse.json(stop);

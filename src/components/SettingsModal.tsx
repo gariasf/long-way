@@ -8,23 +8,29 @@ interface SettingsModalProps {
 
 export function SettingsModal({ onClose }: SettingsModalProps) {
   const [apiKey, setApiKey] = useState('');
-  const [savedKey, setSavedKey] = useState('');
+  const [hasApiKey, setHasApiKey] = useState(false);
+  const [keyPreview, setKeyPreview] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
-    // Load existing API key
-    fetch('/api/settings')
+    const controller = new AbortController();
+
+    fetch('/api/settings', { signal: controller.signal })
       .then(res => res.json())
       .then(data => {
-        if (data.apiKey) {
-          setSavedKey(data.apiKey);
-          setApiKey(data.apiKey);
+        setHasApiKey(data.hasApiKey);
+        setKeyPreview(data.keyPreview);
+      })
+      .catch(err => {
+        if (err.name !== 'AbortError') {
+          console.error('Failed to load settings:', err);
         }
       })
-      .catch(console.error)
       .finally(() => setIsLoading(false));
+
+    return () => controller.abort();
   }, []);
 
   const handleSave = async () => {
@@ -38,14 +44,18 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
         body: JSON.stringify({ apiKey: apiKey.trim() }),
       });
 
+      const data = await res.json();
+
       if (!res.ok) {
-        throw new Error('Failed to save settings');
+        throw new Error(data.error || 'Failed to save settings');
       }
 
-      setSavedKey(apiKey.trim());
+      setHasApiKey(true);
+      setKeyPreview(apiKey.trim().slice(0, 7) + '...' + apiKey.trim().slice(-4));
+      setApiKey('');
       setMessage({ type: 'success', text: 'API key saved successfully' });
     } catch (error) {
-      setMessage({ type: 'error', text: 'Failed to save API key' });
+      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Failed to save API key' });
     } finally {
       setIsSaving(false);
     }
@@ -63,21 +73,20 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
       });
 
       if (!res.ok) {
-        throw new Error('Failed to clear settings');
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to clear settings');
       }
 
       setApiKey('');
-      setSavedKey('');
+      setHasApiKey(false);
+      setKeyPreview(null);
       setMessage({ type: 'success', text: 'API key cleared' });
     } catch (error) {
-      setMessage({ type: 'error', text: 'Failed to clear API key' });
+      setMessage({ type: 'error', text: error instanceof Error ? error.message : 'Failed to clear API key' });
     } finally {
       setIsSaving(false);
     }
   };
-
-  // Mask the API key for display
-  const maskedKey = savedKey ? `${savedKey.slice(0, 10)}...${savedKey.slice(-4)}` : '';
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -121,9 +130,9 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                   className="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-600 rounded-lg bg-white dark:bg-zinc-800"
                   placeholder="sk-ant-..."
                 />
-                {savedKey && (
+                {hasApiKey && keyPreview && (
                   <p className="mt-1 text-xs text-zinc-500">
-                    Current key: {maskedKey}
+                    Current key: {keyPreview}
                   </p>
                 )}
               </div>
@@ -139,7 +148,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
               )}
 
               <div className="flex gap-3">
-                {savedKey && (
+                {hasApiKey && (
                   <button
                     onClick={handleClear}
                     disabled={isSaving}
@@ -153,7 +162,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                   disabled={isSaving || !apiKey.trim()}
                   className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
                 >
-                  {isSaving ? 'Saving...' : 'Save API Key'}
+                  {isSaving ? 'Saving...' : hasApiKey ? 'Update API Key' : 'Save API Key'}
                 </button>
               </div>
             </>

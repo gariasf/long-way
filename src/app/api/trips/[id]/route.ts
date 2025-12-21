@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTripById, getTripWithStops, updateTrip, deleteTrip } from '@/lib/db';
 import { UpdateTripRequest } from '@/lib/types';
+import { validateString, MAX_NAME_LENGTH, MAX_DESCRIPTION_LENGTH } from '@/lib/validation';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -25,11 +26,27 @@ export async function GET(request: NextRequest, context: RouteContext) {
 export async function PUT(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
-    const body: UpdateTripRequest = await request.json();
+    const body = await request.json();
 
     const existing = getTripById(id);
     if (!existing) {
       return NextResponse.json({ error: 'Trip not found' }, { status: 404 });
+    }
+
+    // Validate name if provided
+    if (body.name !== undefined) {
+      const nameError = validateString(body.name, 'Name', MAX_NAME_LENGTH, true);
+      if (nameError) {
+        return NextResponse.json({ error: nameError.message }, { status: 400 });
+      }
+    }
+
+    // Validate description if provided
+    if (body.description !== undefined && body.description !== null) {
+      const descError = validateString(body.description, 'Description', MAX_DESCRIPTION_LENGTH);
+      if (descError) {
+        return NextResponse.json({ error: descError.message }, { status: 400 });
+      }
     }
 
     const updates: UpdateTripRequest = {};
