@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Stop } from '@/lib/types';
+import { Stop } from '@/lib/schemas';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -78,7 +78,6 @@ export function Chat({ tripId, tripName, stops, onStopsChange }: ChatProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: newMessages,
-          stops,
         }),
       });
 

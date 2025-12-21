@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, memo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Stop, StopType } from '@/lib/types';
+import { Stop, StopType } from '@/lib/schemas';
 
 // Fix for default marker icons in Leaflet with webpack
 delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
@@ -22,45 +22,58 @@ const markerColors: Record<StopType, string> = {
   transport: '#9333ea', // purple
 };
 
-function createIcon(type: StopType, isOptional: boolean): L.DivIcon {
-  const color = markerColors[type];
-  const opacity = isOptional ? '0.6' : '1';
-  const borderStyle = isOptional ? 'dashed' : 'solid';
+// Cache for marker icons (only 8 possible combinations)
+const markerIconCache: Record<string, L.DivIcon> = {};
 
-  return L.divIcon({
-    className: 'custom-marker',
-    html: `
-      <div style="
-        width: 24px;
-        height: 24px;
-        background-color: ${color};
-        opacity: ${opacity};
-        border: 2px ${borderStyle} white;
-        border-radius: 50%;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      "></div>
-    `,
-    iconSize: [24, 24],
-    iconAnchor: [12, 12],
-    popupAnchor: [0, -12],
-  });
+function getIcon(type: StopType, isOptional: boolean): L.DivIcon {
+  const key = `${type}-${isOptional}`;
+  let icon = markerIconCache[key];
+
+  if (!icon) {
+    const color = markerColors[type];
+    const opacity = isOptional ? '0.6' : '1';
+    const borderStyle = isOptional ? 'dashed' : 'solid';
+
+    icon = L.divIcon({
+      className: 'custom-marker',
+      html: `
+        <div style="
+          width: 24px;
+          height: 24px;
+          background-color: ${color};
+          opacity: ${opacity};
+          border: 2px ${borderStyle} white;
+          border-radius: 50%;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        "></div>
+      `,
+      iconSize: [24, 24],
+      iconAnchor: [12, 12],
+      popupAnchor: [0, -12],
+    });
+    markerIconCache[key] = icon;
+  }
+
+  return icon;
 }
 
-// Component to fit map bounds to stops
+// Component to fit map bounds to stops (only on initial load)
 function FitBounds({ stops }: { stops: Stop[] }) {
   const map = useMap();
+  const hasFitted = useRef(false);
 
   useEffect(() => {
-    if (stops.length === 0) return;
+    if (stops.length === 0 || hasFitted.current) return;
 
     const bounds = L.latLngBounds(
       stops.map(stop => [stop.latitude, stop.longitude] as [number, number])
     );
 
     map.fitBounds(bounds, { padding: [50, 50] });
+    hasFitted.current = true;
   }, [stops, map]);
 
   return null;
@@ -71,7 +84,8 @@ interface MapProps {
   onStopClick?: (stop: Stop) => void;
 }
 
-export function Map({ stops, onStopClick }: MapProps) {
+// Memoized Map component to prevent unnecessary re-renders
+export const Map = memo(function Map({ stops, onStopClick }: MapProps) {
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
@@ -121,7 +135,7 @@ export function Map({ stops, onStopClick }: MapProps) {
         <Marker
           key={stop.id}
           position={[stop.latitude, stop.longitude]}
-          icon={createIcon(stop.type, stop.is_optional)}
+          icon={getIcon(stop.type, stop.is_optional)}
           eventHandlers={{
             click: () => onStopClick?.(stop),
           }}
@@ -153,4 +167,4 @@ export function Map({ stops, onStopClick }: MapProps) {
       {stops.length > 0 && <FitBounds stops={stops} />}
     </MapContainer>
   );
-}
+});

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTripById, getTripWithStops, updateTrip, deleteTrip } from '@/lib/db';
-import { UpdateTripRequest } from '@/lib/types';
+import { updateTripSchema, getZodErrorMessage } from '@/lib/schemas';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -14,7 +14,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Trip not found' }, { status: 404 });
     }
 
-    return NextResponse.json(result);
+    return NextResponse.json(result, {
+      headers: { 'Cache-Control': 'private, max-age=10, stale-while-revalidate=60' },
+    });
   } catch (error) {
     console.error('Error fetching trip:', error);
     return NextResponse.json({ error: 'Failed to fetch trip' }, { status: 500 });
@@ -25,18 +27,19 @@ export async function GET(request: NextRequest, context: RouteContext) {
 export async function PUT(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
-    const body: UpdateTripRequest = await request.json();
+    const body = await request.json();
 
     const existing = getTripById(id);
     if (!existing) {
       return NextResponse.json({ error: 'Trip not found' }, { status: 404 });
     }
 
-    const updates: UpdateTripRequest = {};
-    if (body.name !== undefined) updates.name = body.name.trim();
-    if (body.description !== undefined) updates.description = body.description?.trim() || null;
+    const result = updateTripSchema.safeParse(body);
+    if (!result.success) {
+      return NextResponse.json({ error: getZodErrorMessage(result.error) }, { status: 400 });
+    }
 
-    const trip = updateTrip(id, updates);
+    const trip = updateTrip(id, result.data);
     return NextResponse.json(trip);
   } catch (error) {
     console.error('Error updating trip:', error);

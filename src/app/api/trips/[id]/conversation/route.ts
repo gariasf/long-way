@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getConversation, saveConversation, clearConversation, getTripById } from '@/lib/db';
+import { saveConversationSchema, getZodErrorMessage } from '@/lib/schemas';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -27,14 +28,19 @@ export async function GET(request: NextRequest, context: RouteContext) {
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const { id: tripId } = await context.params;
-    const { messages } = await request.json();
+    const body = await request.json();
 
     const trip = getTripById(tripId);
     if (!trip) {
       return NextResponse.json({ error: 'Trip not found' }, { status: 404 });
     }
 
-    saveConversation(tripId, messages);
+    const result = saveConversationSchema.safeParse(body);
+    if (!result.success) {
+      return NextResponse.json({ error: getZodErrorMessage(result.error) }, { status: 400 });
+    }
+
+    saveConversation(tripId, result.data.messages);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error saving conversation:', error);

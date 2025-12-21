@@ -6,7 +6,7 @@ import { TripSelector } from '@/components/TripSelector';
 import { StopForm } from '@/components/StopForm';
 import { SettingsModal } from '@/components/SettingsModal';
 import { Chat } from '@/components/Chat';
-import { Trip, Stop } from '@/lib/types';
+import { Trip, Stop } from '@/lib/schemas';
 
 // Dynamic import for Map to avoid SSR issues with Leaflet
 const Map = dynamic(() => import('@/components/Map').then(mod => ({ default: mod.Map })), {
@@ -33,6 +33,14 @@ export default function Home() {
   const [stops, setStops] = useState<Stop[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedStop, setSelectedStop] = useState<Stop | null>(null);
+
+  // Error state for user feedback
+  const [error, setError] = useState<string | null>(null);
+
+  // Loading states for operations
+  const [isCreatingTrip, setIsCreatingTrip] = useState(false);
+  const [isDeletingStop, setIsDeletingStop] = useState<string | null>(null);
+  const [isReordering, setIsReordering] = useState(false);
 
   // Sidebar tab state
   const [activeTab, setActiveTab] = useState<SidebarTab>('timeline');
@@ -80,14 +88,18 @@ export default function Home() {
       const data = await res.json();
       setTrips(data);
 
-      // Auto-select first trip if none selected
-      if (data.length > 0 && !selectedTripId) {
-        setSelectedTripId(data[0].id);
-      }
-    } catch (error) {
-      console.error('Failed to fetch trips:', error);
+      // Auto-select first trip if none selected (use functional update to avoid stale closure)
+      setSelectedTripId(current => {
+        if (data.length > 0 && !current) {
+          return data[0].id;
+        }
+        return current;
+      });
+    } catch (err) {
+      console.error('Failed to fetch trips:', err);
+      setError('Failed to load trips');
     }
-  }, [selectedTripId]);
+  }, []);
 
   // Fetch stops for selected trip
   const fetchStops = useCallback(async (tripId: string) => {
@@ -95,8 +107,9 @@ export default function Home() {
       const res = await fetch(`/api/trips/${tripId}`);
       const data = await res.json();
       setStops(data.stops || []);
-    } catch (error) {
-      console.error('Failed to fetch stops:', error);
+    } catch (err) {
+      console.error('Failed to fetch stops:', err);
+      setError('Failed to load stops');
     }
   }, []);
 
@@ -113,120 +126,156 @@ export default function Home() {
   }, [selectedTripId, fetchStops]);
 
   const handleCreateTrip = async (name: string) => {
+    setIsCreatingTrip(true);
+    setError(null);
     try {
       const res = await fetch('/api/trips', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name }),
       });
+      if (!res.ok) {
+        throw new Error('Failed to create trip');
+      }
       const newTrip = await res.json();
-      setTrips([newTrip, ...trips]);
+      setTrips(current => [newTrip, ...current]);
       setSelectedTripId(newTrip.id);
-    } catch (error) {
-      console.error('Failed to create trip:', error);
+    } catch (err) {
+      console.error('Failed to create trip:', err);
+      setError('Failed to create trip');
+    } finally {
+      setIsCreatingTrip(false);
     }
   };
 
   const handleDeleteTrip = async (tripId: string) => {
+    setError(null);
     try {
-      await fetch(`/api/trips/${tripId}`, { method: 'DELETE' });
-      setTrips(trips.filter(t => t.id !== tripId));
-      if (selectedTripId === tripId) {
-        const remaining = trips.filter(t => t.id !== tripId);
-        setSelectedTripId(remaining.length > 0 ? remaining[0].id : null);
+      const res = await fetch(`/api/trips/${tripId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        throw new Error('Failed to delete trip');
       }
-    } catch (error) {
-      console.error('Failed to delete trip:', error);
+      setTrips(current => {
+        const remaining = current.filter(t => t.id !== tripId);
+        // Also update selected trip if needed
+        setSelectedTripId(currentSelected => {
+          if (currentSelected === tripId) {
+            return remaining.length > 0 ? remaining[0].id : null;
+          }
+          return currentSelected;
+        });
+        return remaining;
+      });
+    } catch (err) {
+      console.error('Failed to delete trip:', err);
+      setError('Failed to delete trip');
     }
   };
 
-  const handleStopClick = (stop: Stop) => {
+  const handleStopClick = useCallback((stop: Stop) => {
     setSelectedStop(stop);
-  };
+  }, []);
 
-  const handleAddStop = () => {
+  const handleAddStop = useCallback(() => {
     setEditingStop(undefined);
     setShowStopForm(true);
-  };
+  }, []);
 
-  const handleEditStop = (stop: Stop) => {
+  const handleEditStop = useCallback((stop: Stop) => {
     setEditingStop(stop);
     setShowStopForm(true);
-  };
+  }, []);
 
-  const handleDeleteStop = async (stop: Stop) => {
+  const handleDeleteStop = useCallback(async (stop: Stop) => {
     if (!confirm(`Delete "${stop.name}"?`)) return;
 
-    try {
-      await fetch(`/api/stops/${stop.id}`, { method: 'DELETE' });
-      setStops(stops.filter(s => s.id !== stop.id));
-      if (selectedStop?.id === stop.id) {
-        setSelectedStop(null);
-      }
-    } catch (error) {
-      console.error('Failed to delete stop:', error);
-    }
-  };
+    // Optimistic update - remove from UI immediately
+    const previousStops = stops;
+    setStops(current => current.filter(s => s.id !== stop.id));
+    setSelectedStop(current => current?.id === stop.id ? null : current);
+    setError(null);
 
-  const handleStopSaved = (savedStop: Stop) => {
-    if (editingStop) {
-      // Update existing stop
-      setStops(stops.map(s => s.id === savedStop.id ? savedStop : s));
-    } else {
-      // Add new stop
-      setStops([...stops, savedStop]);
+    try {
+      const res = await fetch(`/api/stops/${stop.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        throw new Error('Failed to delete stop');
+      }
+      // Success - UI already updated
+    } catch (err) {
+      // Revert on error
+      setStops(previousStops);
+      console.error('Failed to delete stop:', err);
+      setError('Failed to delete stop');
     }
+  }, [stops]);
+
+  const handleStopSaved = useCallback((savedStop: Stop) => {
+    setStops(current => {
+      const exists = current.some(s => s.id === savedStop.id);
+      if (exists) {
+        return current.map(s => s.id === savedStop.id ? savedStop : s);
+      }
+      return [...current, savedStop];
+    });
     setShowStopForm(false);
     setEditingStop(undefined);
     setSelectedStop(savedStop);
-  };
+  }, []);
 
-  const handleFormCancel = () => {
+  const handleFormCancel = useCallback(() => {
     setShowStopForm(false);
     setEditingStop(undefined);
-  };
+  }, []);
 
   // Handle stops change from Chat (when Claude modifies stops)
-  const handleStopsChange = (newStops: Stop[]) => {
+  const handleStopsChange = useCallback((newStops: Stop[]) => {
     setStops(newStops);
-  };
+  }, []);
 
   // Drag and drop handlers
-  const handleDragStart = (index: number) => {
+  const handleDragStart = useCallback((index: number) => {
     setDraggedIndex(index);
-  };
+  }, []);
 
-  const handleDragOver = (e: React.DragEvent, index: number) => {
+  const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
     e.preventDefault();
     if (draggedIndex !== null && draggedIndex !== index) {
       setDragOverIndex(index);
     }
-  };
+  }, [draggedIndex]);
 
-  const handleDragEnd = async () => {
+  const handleDragEnd = useCallback(async () => {
     if (draggedIndex !== null && dragOverIndex !== null && draggedIndex !== dragOverIndex) {
-      // Reorder stops locally
+      // Reorder stops locally (optimistic update)
       const newStops = [...stops];
       const [draggedStop] = newStops.splice(draggedIndex, 1);
       newStops.splice(dragOverIndex, 0, draggedStop);
       setStops(newStops);
 
       // Save to server
+      setIsReordering(true);
+      setError(null);
       try {
-        await fetch(`/api/trips/${selectedTripId}/stops`, {
+        const res = await fetch(`/api/trips/${selectedTripId}/stops`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ stopIds: newStops.map(s => s.id) }),
         });
-      } catch (error) {
-        console.error('Failed to reorder stops:', error);
+        if (!res.ok) {
+          throw new Error('Failed to reorder stops');
+        }
+      } catch (err) {
+        console.error('Failed to reorder stops:', err);
+        setError('Failed to reorder stops');
         // Revert on error
         if (selectedTripId) fetchStops(selectedTripId);
+      } finally {
+        setIsReordering(false);
       }
     }
     setDraggedIndex(null);
     setDragOverIndex(null);
-  };
+  }, [draggedIndex, dragOverIndex, stops, selectedTripId, fetchStops]);
 
   const selectedTrip = trips.find(t => t.id === selectedTripId);
 
@@ -256,6 +305,7 @@ export default function Home() {
           onClick={() => setShowSettings(true)}
           className="p-2 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
           title="Settings"
+          aria-label="Open settings"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -263,6 +313,22 @@ export default function Home() {
           </svg>
         </button>
       </header>
+
+      {/* Error banner */}
+      {error && (
+        <div className="px-4 py-2 bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-800 flex items-center justify-between">
+          <span className="text-sm text-red-600 dark:text-red-400">{error}</span>
+          <button
+            onClick={() => setError(null)}
+            className="text-red-500 hover:text-red-700 dark:hover:text-red-300"
+            aria-label="Dismiss error"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       {/* Main content */}
       <main className="flex flex-1 overflow-hidden">
@@ -475,8 +541,9 @@ export default function Home() {
                                   onClick={(e) => { e.stopPropagation(); openInGoogleMaps(stop); }}
                                   className="p-1 text-zinc-400 hover:text-green-500"
                                   title="Open in Google Maps"
+                                  aria-label={`Open ${stop.name} in Google Maps`}
                                 >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                                   </svg>
@@ -485,8 +552,9 @@ export default function Home() {
                                   onClick={(e) => { e.stopPropagation(); handleEditStop(stop); }}
                                   className="p-1 text-zinc-400 hover:text-blue-500"
                                   title="Edit"
+                                  aria-label={`Edit ${stop.name}`}
                                 >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                   </svg>
                                 </button>
@@ -494,8 +562,10 @@ export default function Home() {
                                   onClick={(e) => { e.stopPropagation(); handleDeleteStop(stop); }}
                                   className="p-1 text-zinc-400 hover:text-red-500"
                                   title="Delete"
+                                  aria-label={`Delete ${stop.name}`}
+                                  disabled={isDeletingStop === stop.id}
                                 >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                   </svg>
                                 </button>

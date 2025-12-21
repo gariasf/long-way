@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Stop, StopType, DurationUnit, TransportType, CreateStopRequest, UpdateStopRequest } from '@/lib/types';
+import { Stop, StopType, DurationUnit, TransportType, CreateStopRequest, UpdateStopRequest } from '@/lib/schemas';
 
 interface StopFormProps {
   tripId: string;
@@ -176,6 +176,14 @@ export function StopForm({ tripId, stop, onSave, onCancel }: StopFormProps) {
       setError('Invalid coordinates');
       return;
     }
+    if (lat < -90 || lat > 90) {
+      setError('Latitude must be between -90 and 90');
+      return;
+    }
+    if (lng < -180 || lng > 180) {
+      setError('Longitude must be between -180 and 180');
+      return;
+    }
 
     setIsSaving(true);
 
@@ -236,8 +244,9 @@ export function StopForm({ tripId, stop, onSave, onCancel }: StopFormProps) {
           <button
             onClick={onCancel}
             className="p-1 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+            aria-label="Close form"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>

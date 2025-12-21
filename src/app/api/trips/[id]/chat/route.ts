@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
-import { getSetting, getTripById } from '@/lib/db';
+import { getSetting, getTripById, getStopsByTripId } from '@/lib/db';
 import { tools, handleToolCall, getSystemPrompt } from '@/lib/claude-tools';
-import { Stop } from '@/lib/types';
+import { chatRequestSchema, getZodErrorMessage } from '@/lib/schemas';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -10,10 +10,13 @@ type RouteContext = { params: Promise<{ id: string }> };
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const { id: tripId } = await context.params;
-    const { messages, stops } = await request.json() as {
-      messages: Array<{ role: 'user' | 'assistant'; content: string }>;
-      stops: Stop[];
-    };
+    const body = await request.json();
+
+    // Validate request
+    const result = chatRequestSchema.safeParse(body);
+    if (!result.success) {
+      return NextResponse.json({ error: getZodErrorMessage(result.error) }, { status: 400 });
+    }
 
     // Get API key
     const apiKey = getSetting('anthropic_api_key');
@@ -30,18 +33,20 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Trip not found' }, { status: 404 });
     }
 
+    // Get current stops from database (not from request - saves bandwidth)
+    let currentStops = getStopsByTripId(tripId);
+
     // Initialize Anthropic client
     const anthropic = new Anthropic({ apiKey });
 
     // Build messages for Claude API
-    const claudeMessages: Anthropic.MessageParam[] = messages.map(m => ({
+    const claudeMessages: Anthropic.MessageParam[] = result.data.messages.map(m => ({
       role: m.role,
       content: m.content,
     }));
 
     // Track tool calls for the response
     const toolCalls: Array<{ name: string; result: string }> = [];
-    let currentStops = [...stops];
     let finalResponse = '';
 
     // Keep calling Claude until we get a final response (no more tool use)
@@ -64,24 +69,24 @@ export async function POST(request: NextRequest, context: RouteContext) {
           finalResponse = block.text;
         } else if (block.type === 'tool_use') {
           hasToolUse = true;
-          const result = handleToolCall(
+          const toolResult = handleToolCall(
             block.name,
             block.input as Record<string, unknown>,
             tripId,
             currentStops
           );
 
-          toolCalls.push({ name: block.name, result: result.result });
+          toolCalls.push({ name: block.name, result: toolResult.result });
 
           // Update current stops if the tool modified them
-          if (result.stops) {
-            currentStops = result.stops;
+          if (toolResult.stops) {
+            currentStops = toolResult.stops;
           }
 
           toolResults.push({
             type: 'tool_result',
             tool_use_id: block.id,
-            content: result.result,
+            content: toolResult.result,
           });
         }
       }

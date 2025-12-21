@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getStopById, updateStop, deleteStop } from '@/lib/db';
-import { UpdateStopRequest } from '@/lib/types';
+import { updateStopSchema, getZodErrorMessage } from '@/lib/schemas';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -25,30 +25,19 @@ export async function GET(request: NextRequest, context: RouteContext) {
 export async function PUT(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
-    const body: UpdateStopRequest = await request.json();
+    const body = await request.json();
 
     const existing = getStopById(id);
     if (!existing) {
       return NextResponse.json({ error: 'Stop not found' }, { status: 404 });
     }
 
-    // Validate fields if provided
-    if (body.type !== undefined && !['base_camp', 'waypoint', 'stop', 'transport'].includes(body.type)) {
-      return NextResponse.json({ error: 'Invalid stop type' }, { status: 400 });
-    }
-    if (body.duration_unit !== undefined && !['hours', 'nights', 'days'].includes(body.duration_unit)) {
-      return NextResponse.json({ error: 'Invalid duration unit' }, { status: 400 });
-    }
-    if (body.transport_type !== undefined && body.transport_type !== null &&
-        !['ferry', 'flight', 'train', 'bus'].includes(body.transport_type)) {
-      return NextResponse.json({ error: 'Invalid transport type' }, { status: 400 });
+    const result = updateStopSchema.safeParse(body);
+    if (!result.success) {
+      return NextResponse.json({ error: getZodErrorMessage(result.error) }, { status: 400 });
     }
 
-    const updates: UpdateStopRequest = { ...body };
-    if (body.name !== undefined) updates.name = body.name.trim();
-    if (body.description !== undefined) updates.description = body.description?.trim();
-
-    const stop = updateStop(id, updates);
+    const stop = updateStop(id, result.data);
     return NextResponse.json(stop);
   } catch (error) {
     console.error('Error updating stop:', error);
