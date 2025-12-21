@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { TripSelector } from '@/components/TripSelector';
+import { StopForm } from '@/components/StopForm';
 import { Trip, Stop } from '@/lib/types';
 
 // Dynamic import for Map to avoid SSR issues with Leaflet
@@ -21,6 +22,14 @@ export default function Home() {
   const [stops, setStops] = useState<Stop[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedStop, setSelectedStop] = useState<Stop | null>(null);
+
+  // Form state
+  const [showStopForm, setShowStopForm] = useState(false);
+  const [editingStop, setEditingStop] = useState<Stop | undefined>(undefined);
+
+  // Drag and drop state
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   // Fetch all trips
   const fetchTrips = useCallback(async () => {
@@ -93,6 +102,85 @@ export default function Home() {
     setSelectedStop(stop);
   };
 
+  const handleAddStop = () => {
+    setEditingStop(undefined);
+    setShowStopForm(true);
+  };
+
+  const handleEditStop = (stop: Stop) => {
+    setEditingStop(stop);
+    setShowStopForm(true);
+  };
+
+  const handleDeleteStop = async (stop: Stop) => {
+    if (!confirm(`Delete "${stop.name}"?`)) return;
+
+    try {
+      await fetch(`/api/stops/${stop.id}`, { method: 'DELETE' });
+      setStops(stops.filter(s => s.id !== stop.id));
+      if (selectedStop?.id === stop.id) {
+        setSelectedStop(null);
+      }
+    } catch (error) {
+      console.error('Failed to delete stop:', error);
+    }
+  };
+
+  const handleStopSaved = (savedStop: Stop) => {
+    if (editingStop) {
+      // Update existing stop
+      setStops(stops.map(s => s.id === savedStop.id ? savedStop : s));
+    } else {
+      // Add new stop
+      setStops([...stops, savedStop]);
+    }
+    setShowStopForm(false);
+    setEditingStop(undefined);
+    setSelectedStop(savedStop);
+  };
+
+  const handleFormCancel = () => {
+    setShowStopForm(false);
+    setEditingStop(undefined);
+  };
+
+  // Drag and drop handlers
+  const handleDragStart = (index: number) => {
+    setDraggedIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (draggedIndex !== null && draggedIndex !== index) {
+      setDragOverIndex(index);
+    }
+  };
+
+  const handleDragEnd = async () => {
+    if (draggedIndex !== null && dragOverIndex !== null && draggedIndex !== dragOverIndex) {
+      // Reorder stops locally
+      const newStops = [...stops];
+      const [draggedStop] = newStops.splice(draggedIndex, 1);
+      newStops.splice(dragOverIndex, 0, draggedStop);
+      setStops(newStops);
+
+      // Save to server
+      try {
+        await fetch(`/api/trips/${selectedTripId}/stops`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ stopIds: newStops.map(s => s.id) }),
+        });
+      } catch (error) {
+        console.error('Failed to reorder stops:', error);
+        // Revert on error
+        if (selectedTripId) fetchStops(selectedTripId);
+      }
+    }
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
   const selectedTrip = trips.find(t => t.id === selectedTripId);
 
   if (loading) {
@@ -154,12 +242,20 @@ export default function Home() {
                     <p className="text-sm">Add your first stop to start planning</p>
                   </div>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {stops.map((stop, index) => (
                       <div
                         key={stop.id}
+                        draggable
+                        onDragStart={() => handleDragStart(index)}
+                        onDragOver={(e) => handleDragOver(e, index)}
+                        onDragEnd={handleDragEnd}
                         onClick={() => setSelectedStop(stop)}
-                        className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                        className={`group p-3 rounded-lg border cursor-pointer transition-all ${
+                          dragOverIndex === index ? 'border-blue-400 border-2' : ''
+                        } ${
+                          draggedIndex === index ? 'opacity-50' : ''
+                        } ${
                           selectedStop?.id === stop.id
                             ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
                             : stop.is_optional
@@ -168,7 +264,15 @@ export default function Home() {
                         } bg-white dark:bg-zinc-800`}
                       >
                         <div className="flex items-start gap-3">
-                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
+                          {/* Drag handle */}
+                          <div className="mt-0.5 cursor-grab active:cursor-grabbing text-zinc-300 hover:text-zinc-500">
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M8 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM8 12a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM6 20a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM14 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM14 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0Z" />
+                            </svg>
+                          </div>
+
+                          {/* Stop number badge */}
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 ${
                             stop.type === 'base_camp' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' :
                             stop.type === 'waypoint' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' :
                             stop.type === 'transport' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300' :
@@ -176,6 +280,8 @@ export default function Home() {
                           }`}>
                             {index + 1}
                           </div>
+
+                          {/* Stop info */}
                           <div className="flex-1 min-w-0">
                             <h3 className="font-medium truncate">{stop.name}</h3>
                             {stop.description && (
@@ -199,6 +305,28 @@ export default function Home() {
                               )}
                             </div>
                           </div>
+
+                          {/* Action buttons */}
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleEditStop(stop); }}
+                              className="p-1 text-zinc-400 hover:text-blue-500"
+                              title="Edit"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleDeleteStop(stop); }}
+                              className="p-1 text-zinc-400 hover:text-red-500"
+                              title="Delete"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -208,7 +336,10 @@ export default function Home() {
 
               {/* Add stop button */}
               <div className="p-4 border-t border-zinc-200 dark:border-zinc-800">
-                <button className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">
+                <button
+                  onClick={handleAddStop}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+                >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
@@ -229,6 +360,16 @@ export default function Home() {
           </div>
         )}
       </main>
+
+      {/* Stop Form Modal */}
+      {showStopForm && selectedTripId && (
+        <StopForm
+          tripId={selectedTripId}
+          stop={editingStop}
+          onSave={handleStopSaved}
+          onCancel={handleFormCancel}
+        />
+      )}
     </div>
   );
 }
