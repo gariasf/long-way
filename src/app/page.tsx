@@ -630,7 +630,13 @@ export default function Home() {
 
       {/* Settings Modal */}
       {showSettings && (
-        <SettingsModal onClose={() => setShowSettings(false)} />
+        <SettingsModal
+          onClose={() => setShowSettings(false)}
+          onDataImported={() => {
+            fetchTrips();
+            setSelectedTripId(null);
+          }}
+        />
       )}
     </div>
   );

@@ -324,3 +324,109 @@ export function clearConversation(tripId: string): void {
   const db = getDb();
   db.prepare('DELETE FROM conversations WHERE trip_id = ?').run(tripId);
 }
+
+// Export all data
+export interface ExportData {
+  version: number;
+  exportedAt: string;
+  trips: Array<Trip & { stops: Stop[]; conversation?: { messages: Array<{ role: string; content: string; timestamp: string }> } }>;
+}
+
+export function exportAllData(): ExportData {
+  const db = getDb();
+  const trips = getAllTrips();
+
+  const tripsWithData = trips.map(trip => {
+    const stops = getStopsByTripId(trip.id);
+    const conversation = getConversation(trip.id);
+    return {
+      ...trip,
+      stops,
+      ...(conversation ? { conversation: { messages: conversation.messages } } : {}),
+    };
+  });
+
+  return {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    trips: tripsWithData,
+  };
+}
+
+// Import data (merge mode - adds to existing data)
+export function importData(data: ExportData, mode: 'merge' | 'replace' = 'merge'): { imported: number; skipped: number } {
+  const db = getDb();
+  let imported = 0;
+  let skipped = 0;
+
+  const transaction = db.transaction(() => {
+    if (mode === 'replace') {
+      // Clear all existing data
+      db.prepare('DELETE FROM conversations').run();
+      db.prepare('DELETE FROM stops').run();
+      db.prepare('DELETE FROM trips').run();
+    }
+
+    for (const tripData of data.trips) {
+      // Check if trip already exists (by id or name in merge mode)
+      const existingById = getTripById(tripData.id);
+      if (existingById && mode === 'merge') {
+        skipped++;
+        continue;
+      }
+
+      // Create trip with original id if replacing, or new id if merging
+      const tripId = mode === 'replace' ? tripData.id : uuidv4();
+      const now = new Date().toISOString();
+
+      db.prepare(`
+        INSERT INTO trips (id, name, description, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(tripId, tripData.name, tripData.description || null, tripData.created_at || now, now);
+
+      // Import stops
+      for (let i = 0; i < tripData.stops.length; i++) {
+        const stop = tripData.stops[i];
+        const stopId = mode === 'replace' ? stop.id : uuidv4();
+
+        db.prepare(`
+          INSERT INTO stops (
+            id, trip_id, name, type, description, latitude, longitude,
+            duration_value, duration_unit, is_optional, tags, links, notes, "order",
+            transport_type, departure_time, arrival_time, departure_location, arrival_location
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          stopId,
+          tripId,
+          stop.name,
+          stop.type,
+          stop.description || null,
+          stop.latitude,
+          stop.longitude,
+          stop.duration_value || null,
+          stop.duration_unit || null,
+          stop.is_optional ? 1 : 0,
+          JSON.stringify(stop.tags || []),
+          JSON.stringify(stop.links || []),
+          stop.notes || null,
+          i,
+          stop.transport_type || null,
+          stop.departure_time || null,
+          stop.arrival_time || null,
+          stop.departure_location || null,
+          stop.arrival_location || null
+        );
+      }
+
+      // Import conversation if present
+      if (tripData.conversation?.messages) {
+        saveConversation(tripId, tripData.conversation.messages);
+      }
+
+      imported++;
+    }
+  });
+
+  transaction();
+  return { imported, skipped };
+}
