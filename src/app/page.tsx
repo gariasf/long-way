@@ -340,8 +340,26 @@ export default function Home() {
         {selectedTrip ? (
           <>
             {/* Map area */}
-            <div className="flex-1">
+            <div className="flex-1 relative">
               <Map stops={stops} onStopClick={handleStopClick} />
+              {/* Open in Google Maps button */}
+              {stops.length >= 2 && (
+                <button
+                  onClick={() => {
+                    const routeStops = stops.filter(s => !s.is_optional);
+                    if (routeStops.length < 2) return;
+                    const waypoints = routeStops.map(s => `${s.latitude},${s.longitude}`).join('/');
+                    window.open(`https://www.google.com/maps/dir/${waypoints}`, '_blank');
+                  }}
+                  className="absolute bottom-4 left-4 z-[500] flex items-center gap-2 px-3 py-2 text-sm font-medium bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded-lg shadow-lg hover:bg-zinc-50 dark:hover:bg-zinc-700"
+                  title="Open route in Google Maps"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                  </svg>
+                  Open in Maps
+                </button>
+              )}
             </div>
 
             {/* Sidebar */}
@@ -606,12 +624,14 @@ export default function Home() {
                   </div>
                 </>
               ) : (
-                <Chat
-                  tripId={selectedTripId!}
-                  tripName={selectedTrip.name}
-                  stops={stops}
-                  onStopsChange={handleStopsChange}
-                />
+                <div className="flex-1 min-h-0 flex flex-col">
+                  <Chat
+                    tripId={selectedTripId!}
+                    tripName={selectedTrip.name}
+                    stops={stops}
+                    onStopsChange={handleStopsChange}
+                  />
+                </div>
               )}
             </aside>
           </>
