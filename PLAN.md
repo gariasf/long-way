@@ -42,7 +42,6 @@ A self-hosted trip planning tool for contemplative, long-distance journeys. Feat
   - Name and type icon
   - Short description
   - Duration
-  - Distance/time to next stop (entered manually or calculated)
 - Optional stops shown indented or with visual distinction
 - Expandable notes (hidden by default)
 
@@ -231,9 +230,10 @@ Explicitly NOT building:
 - Multiple user accounts
 - Offline mode
 - Mobile editing
-- Route calculation (distances entered manually or via external tool)
+- Distance/time calculation between stops
 - Import/export (GPX, Google Maps)
 - Actual date scheduling (just sequence + duration)
+- Click-to-add on map
 
 These can be added later if needed.
 
@@ -279,24 +279,20 @@ These can be added later if needed.
 
 ---
 
-## Open Questions
+## Decisions Made
 
-1. **Distance/time between stops**: Calculate automatically (requires routing API, adds complexity/cost) or manual entry?
-   - Recommendation: Manual entry for MVP, with "Open in Google Maps" to check
+1. **Distance/time between stops**: Skip for MVP. Just show route visually, no distance display. Can add later.
 
-2. **Map interaction**: Click-to-add-stop would be convenient but adds complexity. Worth it?
-   - Recommendation: No for MVP. Use form with address/coordinate search instead.
+2. **Map interaction**: No click-to-add. Use form with location search instead.
 
-3. **Coordinate entry**: How should users enter locations?
-   - Option A: Type address, geocode to coordinates (needs geocoding API)
-   - Option B: Enter lat/lng directly (tedious)
-   - Option C: Search via Nominatim (free OpenStreetMap geocoding)
-   - Recommendation: Option C — Nominatim is free and sufficient
+3. **Location entry**: Multiple input methods supported:
+   - Search by place name via Nominatim (free OSM geocoding)
+   - Paste Google Maps link (extract coordinates)
+   - Enter coordinates directly
 
-4. **Chat context**: How much trip context to send to Claude on each message?
-   - Full trip data every time (simple but token-heavy)
-   - Smart context (recent changes, relevant stops)
-   - Recommendation: Full trip for MVP (trips won't be huge), optimize later if needed
+4. **Optional stops**: Simple `is_optional` boolean flag. Shows with different styling on map/timeline.
+
+5. **Chat context**: Full trip data sent to Claude on each message (simple, trips won't be huge).
 
 ---
 
