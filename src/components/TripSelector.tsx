@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Trip } from '@/lib/types';
+import { Trip } from '@/lib/schemas';
 
 interface TripSelectorProps {
   trips: Trip[];

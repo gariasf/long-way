@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { Trip, Stop, StopRow, rowToStop, CreateStopRequest, UpdateStopRequest } from './types';
+import { Trip, Stop, StopRow, rowToStop, CreateStopRequest, UpdateStopRequest } from './schemas';
 
 // Database path - store in data directory at project root
 const DB_PATH = process.env.DATABASE_PATH || path.join(process.cwd(), 'data', 'longway.db');

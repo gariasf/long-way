@@ -6,7 +6,7 @@ import { TripSelector } from '@/components/TripSelector';
 import { StopForm } from '@/components/StopForm';
 import { SettingsModal } from '@/components/SettingsModal';
 import { Chat } from '@/components/Chat';
-import { Trip, Stop } from '@/lib/types';
+import { Trip, Stop } from '@/lib/schemas';
 
 // Dynamic import for Map to avoid SSR issues with Leaflet
 const Map = dynamic(() => import('@/components/Map').then(mod => ({ default: mod.Map })), {
@@ -172,78 +172,81 @@ export default function Home() {
     }
   };
 
-  const handleStopClick = (stop: Stop) => {
+  const handleStopClick = useCallback((stop: Stop) => {
     setSelectedStop(stop);
-  };
+  }, []);
 
-  const handleAddStop = () => {
+  const handleAddStop = useCallback(() => {
     setEditingStop(undefined);
     setShowStopForm(true);
-  };
+  }, []);
 
-  const handleEditStop = (stop: Stop) => {
+  const handleEditStop = useCallback((stop: Stop) => {
     setEditingStop(stop);
     setShowStopForm(true);
-  };
+  }, []);
 
-  const handleDeleteStop = async (stop: Stop) => {
+  const handleDeleteStop = useCallback(async (stop: Stop) => {
     if (!confirm(`Delete "${stop.name}"?`)) return;
 
-    setIsDeletingStop(stop.id);
+    // Optimistic update - remove from UI immediately
+    const previousStops = stops;
+    setStops(current => current.filter(s => s.id !== stop.id));
+    setSelectedStop(current => current?.id === stop.id ? null : current);
     setError(null);
+
     try {
       const res = await fetch(`/api/stops/${stop.id}`, { method: 'DELETE' });
       if (!res.ok) {
         throw new Error('Failed to delete stop');
       }
-      setStops(current => current.filter(s => s.id !== stop.id));
-      setSelectedStop(current => current?.id === stop.id ? null : current);
+      // Success - UI already updated
     } catch (err) {
+      // Revert on error
+      setStops(previousStops);
       console.error('Failed to delete stop:', err);
       setError('Failed to delete stop');
-    } finally {
-      setIsDeletingStop(null);
     }
-  };
+  }, [stops]);
 
-  const handleStopSaved = (savedStop: Stop) => {
-    if (editingStop) {
-      // Update existing stop
-      setStops(stops.map(s => s.id === savedStop.id ? savedStop : s));
-    } else {
-      // Add new stop
-      setStops([...stops, savedStop]);
-    }
+  const handleStopSaved = useCallback((savedStop: Stop) => {
+    setStops(current => {
+      const exists = current.some(s => s.id === savedStop.id);
+      if (exists) {
+        return current.map(s => s.id === savedStop.id ? savedStop : s);
+      }
+      return [...current, savedStop];
+    });
     setShowStopForm(false);
     setEditingStop(undefined);
     setSelectedStop(savedStop);
-  };
+  }, []);
 
-  const handleFormCancel = () => {
+  const handleFormCancel = useCallback(() => {
     setShowStopForm(false);
     setEditingStop(undefined);
-  };
+  }, []);
 
   // Handle stops change from Chat (when Claude modifies stops)
-  const handleStopsChange = (newStops: Stop[]) => {
+  const handleStopsChange = useCallback((newStops: Stop[]) => {
     setStops(newStops);
-  };
+  }, []);
 
   // Drag and drop handlers
-  const handleDragStart = (index: number) => {
+  const handleDragStart = useCallback((index: number) => {
     setDraggedIndex(index);
-  };
+  }, []);
 
-  const handleDragOver = (e: React.DragEvent, index: number) => {
+  const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
     e.preventDefault();
     if (draggedIndex !== null && draggedIndex !== index) {
       setDragOverIndex(index);
     }
-  };
+  }, [draggedIndex]);
 
-  const handleDragEnd = async () => {
+  const handleDragEnd = useCallback(async () => {
     if (draggedIndex !== null && dragOverIndex !== null && draggedIndex !== dragOverIndex) {
-      // Reorder stops locally
+      // Reorder stops locally (optimistic update)
       const newStops = [...stops];
       const [draggedStop] = newStops.splice(draggedIndex, 1);
       newStops.splice(dragOverIndex, 0, draggedStop);
@@ -272,7 +275,7 @@ export default function Home() {
     }
     setDraggedIndex(null);
     setDragOverIndex(null);
-  };
+  }, [draggedIndex, dragOverIndex, stops, selectedTripId, fetchStops]);
 
   const selectedTrip = trips.find(t => t.id === selectedTripId);
 

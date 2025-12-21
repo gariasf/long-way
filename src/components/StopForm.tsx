@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Stop, StopType, DurationUnit, TransportType, CreateStopRequest, UpdateStopRequest } from '@/lib/types';
+import { Stop, StopType, DurationUnit, TransportType, CreateStopRequest, UpdateStopRequest } from '@/lib/schemas';
 
 interface StopFormProps {
   tripId: string;

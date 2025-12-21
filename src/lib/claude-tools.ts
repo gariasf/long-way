@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { Stop, CreateStopRequest } from './types';
+import { Stop, CreateStopRequest } from './schemas';
 import { createStop, updateStop, deleteStop, reorderStops, getStopsByTripId } from './db';
 
 // Tool definitions for Claude
@@ -189,13 +189,15 @@ export function handleToolCall(
         description: input.description,
         duration_value: input.duration_value,
         duration_unit: input.duration_unit,
-        is_optional: input.is_optional,
+        is_optional: input.is_optional ?? false,
         notes: input.notes,
         transport_type: input.transport_type,
         departure_location: input.departure_location,
         arrival_location: input.arrival_location,
         departure_time: input.departure_time,
         arrival_time: input.arrival_time,
+        tags: [],
+        links: [],
       };
 
       const newStop = createStop(tripId, stopData);

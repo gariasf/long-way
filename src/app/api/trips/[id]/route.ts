@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTripById, getTripWithStops, updateTrip, deleteTrip } from '@/lib/db';
-import { UpdateTripRequest } from '@/lib/types';
-import { validateString, MAX_NAME_LENGTH, MAX_DESCRIPTION_LENGTH } from '@/lib/validation';
+import { updateTripSchema, getZodErrorMessage } from '@/lib/schemas';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -15,7 +14,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Trip not found' }, { status: 404 });
     }
 
-    return NextResponse.json(result);
+    return NextResponse.json(result, {
+      headers: { 'Cache-Control': 'private, max-age=10, stale-while-revalidate=60' },
+    });
   } catch (error) {
     console.error('Error fetching trip:', error);
     return NextResponse.json({ error: 'Failed to fetch trip' }, { status: 500 });
@@ -33,27 +34,12 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Trip not found' }, { status: 404 });
     }
 
-    // Validate name if provided
-    if (body.name !== undefined) {
-      const nameError = validateString(body.name, 'Name', MAX_NAME_LENGTH, true);
-      if (nameError) {
-        return NextResponse.json({ error: nameError.message }, { status: 400 });
-      }
+    const result = updateTripSchema.safeParse(body);
+    if (!result.success) {
+      return NextResponse.json({ error: getZodErrorMessage(result.error) }, { status: 400 });
     }
 
-    // Validate description if provided
-    if (body.description !== undefined && body.description !== null) {
-      const descError = validateString(body.description, 'Description', MAX_DESCRIPTION_LENGTH);
-      if (descError) {
-        return NextResponse.json({ error: descError.message }, { status: 400 });
-      }
-    }
-
-    const updates: UpdateTripRequest = {};
-    if (body.name !== undefined) updates.name = body.name.trim();
-    if (body.description !== undefined) updates.description = body.description?.trim() || null;
-
-    const trip = updateTrip(id, updates);
+    const trip = updateTrip(id, result.data);
     return NextResponse.json(trip);
   } catch (error) {
     console.error('Error updating trip:', error);
