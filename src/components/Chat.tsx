@@ -27,6 +27,7 @@ export function Chat({ tripId, tripName, stops, onStopsChange }: ChatProps) {
   const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Check if API key is configured
@@ -51,9 +52,12 @@ export function Chat({ tripId, tripName, stops, onStopsChange }: ChatProps) {
       .catch(console.error);
   }, [tripId]);
 
-  // Scroll to bottom when messages change
+  // Scroll to bottom when messages change (without affecting parent scroll)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
   }, [messages]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -177,7 +181,7 @@ export function Chat({ tripId, tripName, stops, onStopsChange }: ChatProps) {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-3 space-y-3">
         {messages.length === 0 ? (
           <div className="text-center text-zinc-500 dark:text-zinc-400 py-8">
             <p className="mb-2">Ask Claude about your trip</p>

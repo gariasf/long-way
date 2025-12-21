@@ -345,7 +345,7 @@ export default function Home() {
             </div>
 
             {/* Sidebar */}
-            <aside className="w-96 border-l border-zinc-200 dark:border-zinc-800 flex flex-col">
+            <aside className="w-96 border-l border-zinc-200 dark:border-zinc-800 flex flex-col overflow-hidden">
               {/* Tabs */}
               <div className="flex border-b border-zinc-200 dark:border-zinc-800">
                 <button
