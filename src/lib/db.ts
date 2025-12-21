@@ -60,6 +60,11 @@ function initializeSchema(database: Database.Database): void {
       FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_stops_trip_id ON stops(trip_id);
     CREATE INDEX IF NOT EXISTS idx_stops_order ON stops(trip_id, "order");
     CREATE INDEX IF NOT EXISTS idx_conversations_trip_id ON conversations(trip_id);
@@ -246,4 +251,58 @@ export function getTripWithStops(tripId: string): { trip: Trip; stops: Stop[] } 
 
   const stops = getStopsByTripId(tripId);
   return { trip, stops };
+}
+
+// Settings operations
+export function getSetting(key: string): string | null {
+  const db = getDb();
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
+  return row?.value ?? null;
+}
+
+export function setSetting(key: string, value: string): void {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO settings (key, value) VALUES (?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+  `).run(key, value);
+}
+
+export function deleteSetting(key: string): void {
+  const db = getDb();
+  db.prepare('DELETE FROM settings WHERE key = ?').run(key);
+}
+
+// Conversation operations
+export function getConversation(tripId: string): { id: string; messages: Array<{ role: string; content: string; timestamp: string }> } | null {
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM conversations WHERE trip_id = ?').get(tripId) as { id: string; messages: string } | undefined;
+  if (!row) return null;
+  return {
+    id: row.id,
+    messages: JSON.parse(row.messages),
+  };
+}
+
+export function saveConversation(tripId: string, messages: Array<{ role: string; content: string; timestamp: string }>): void {
+  const db = getDb();
+  const existing = getConversation(tripId);
+  const now = new Date().toISOString();
+
+  if (existing) {
+    db.prepare(`
+      UPDATE conversations SET messages = ?, updated_at = ? WHERE trip_id = ?
+    `).run(JSON.stringify(messages), now, tripId);
+  } else {
+    const id = uuidv4();
+    db.prepare(`
+      INSERT INTO conversations (id, trip_id, messages, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(id, tripId, JSON.stringify(messages), now, now);
+  }
+}
+
+export function clearConversation(tripId: string): void {
+  const db = getDb();
+  db.prepare('DELETE FROM conversations WHERE trip_id = ?').run(tripId);
 }
