@@ -23,6 +23,7 @@ function getDb(): Database.Database {
 
 class SqliteAdapter implements DbAdapter {
   readonly dialect = 'sqlite' as const;
+  private schemaInitialized = false;
 
   async query<T>(sql: string, params: unknown[] = []): Promise<T[]> {
     const sqlite = getDb();
@@ -47,37 +48,23 @@ class SqliteAdapter implements DbAdapter {
   async transaction<T>(fn: (adapter: DbAdapter) => Promise<T>): Promise<T> {
     const sqlite = getDb();
 
-    // SQLite transactions are synchronous, but we wrap in a promise
-    // to maintain the async interface
-    return new Promise((resolve, reject) => {
-      const transaction = sqlite.transaction(async () => {
-        try {
-          const result = await fn(this);
-          return result;
-        } catch (error) {
-          throw error;
-        }
-      });
-
-      try {
-        // better-sqlite3 transactions are sync, so we handle the async fn specially
-        sqlite.exec('BEGIN');
-        fn(this)
-          .then((result) => {
-            sqlite.exec('COMMIT');
-            resolve(result);
-          })
-          .catch((error) => {
-            sqlite.exec('ROLLBACK');
-            reject(error);
-          });
-      } catch (error) {
-        reject(error);
-      }
-    });
+    // Manual transaction management for async functions
+    try {
+      sqlite.exec('BEGIN');
+      const result = await fn(this);
+      sqlite.exec('COMMIT');
+      return result;
+    } catch (error) {
+      sqlite.exec('ROLLBACK');
+      throw error;
+    }
   }
 
   async initSchema(): Promise<void> {
+    if (this.schemaInitialized) {
+      return;
+    }
+
     const sqlite = getDb();
     sqlite.exec(`
       CREATE TABLE IF NOT EXISTS trips (
@@ -129,6 +116,8 @@ class SqliteAdapter implements DbAdapter {
       CREATE INDEX IF NOT EXISTS idx_stops_order ON stops(trip_id, "order");
       CREATE INDEX IF NOT EXISTS idx_conversations_trip_id ON conversations(trip_id);
     `);
+
+    this.schemaInitialized = true;
   }
 
   async close(): Promise<void> {

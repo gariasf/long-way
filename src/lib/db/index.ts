@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { getAdapter, initDatabase } from './adapter';
+import { getAdapter, ensureSchema } from './adapter';
 import type {
   Trip,
   Stop,
@@ -13,27 +13,27 @@ import { rowToStop } from './types';
 
 // Re-export types and utilities
 export * from './types';
-export { getAdapter, initDatabase, closeDatabase } from './adapter';
+export { getAdapter, initDatabase, closeDatabase, ensureSchema } from './adapter';
 
 // ============================================================================
 // Trip Operations
 // ============================================================================
 
 export async function getAllTrips(): Promise<Trip[]> {
+  await ensureSchema();
   const adapter = getAdapter();
-  await adapter.initSchema();
   return adapter.query<Trip>('SELECT * FROM trips ORDER BY updated_at DESC');
 }
 
 export async function getTripById(id: string): Promise<Trip | null> {
+  await ensureSchema();
   const adapter = getAdapter();
-  await adapter.initSchema();
   return adapter.queryOne<Trip>('SELECT * FROM trips WHERE id = $1', [id]);
 }
 
 export async function createTrip(name: string, description?: string): Promise<Trip> {
+  await ensureSchema();
   const adapter = getAdapter();
-  await adapter.initSchema();
   const id = uuidv4();
   const now = new Date().toISOString();
 
@@ -43,19 +43,24 @@ export async function createTrip(name: string, description?: string): Promise<Tr
     [id, name, description || null, now, now]
   );
 
-  const trip = await getTripById(id);
-  if (!trip) throw new Error('Failed to create trip');
-  return trip;
+  // Return constructed object instead of re-querying
+  return {
+    id,
+    name,
+    description: description || null,
+    created_at: now,
+    updated_at: now,
+  };
 }
 
 export async function updateTrip(
   id: string,
   updates: { name?: string; description?: string | null }
 ): Promise<Trip | null> {
+  await ensureSchema();
   const adapter = getAdapter();
-  await adapter.initSchema();
 
-  const trip = await getTripById(id);
+  const trip = await adapter.queryOne<Trip>('SELECT * FROM trips WHERE id = $1', [id]);
   if (!trip) return null;
 
   const name = updates.name ?? trip.name;
@@ -67,12 +72,18 @@ export async function updateTrip(
     [name, description, now, id]
   );
 
-  return getTripById(id);
+  // Return updated object instead of re-querying
+  return {
+    ...trip,
+    name,
+    description,
+    updated_at: now,
+  };
 }
 
 export async function deleteTrip(id: string): Promise<boolean> {
+  await ensureSchema();
   const adapter = getAdapter();
-  await adapter.initSchema();
   const result = await adapter.execute('DELETE FROM trips WHERE id = $1', [id]);
   return result.rowCount > 0;
 }
@@ -82,8 +93,8 @@ export async function deleteTrip(id: string): Promise<boolean> {
 // ============================================================================
 
 export async function getStopsByTripId(tripId: string): Promise<Stop[]> {
+  await ensureSchema();
   const adapter = getAdapter();
-  await adapter.initSchema();
   const rows = await adapter.query<StopRow>(
     'SELECT * FROM stops WHERE trip_id = $1 ORDER BY "order"',
     [tripId]
@@ -92,15 +103,15 @@ export async function getStopsByTripId(tripId: string): Promise<Stop[]> {
 }
 
 export async function getStopById(id: string): Promise<Stop | null> {
+  await ensureSchema();
   const adapter = getAdapter();
-  await adapter.initSchema();
   const row = await adapter.queryOne<StopRow>('SELECT * FROM stops WHERE id = $1', [id]);
   return row ? rowToStop(row) : null;
 }
 
 export async function getNextOrder(tripId: string): Promise<number> {
+  await ensureSchema();
   const adapter = getAdapter();
-  await adapter.initSchema();
   const result = await adapter.queryOne<{ max_order: number | null }>(
     'SELECT MAX("order") as max_order FROM stops WHERE trip_id = $1',
     [tripId]
@@ -109,8 +120,8 @@ export async function getNextOrder(tripId: string): Promise<number> {
 }
 
 export async function createStop(tripId: string, data: CreateStopRequest): Promise<Stop> {
+  await ensureSchema();
   const adapter = getAdapter();
-  await adapter.initSchema();
   const id = uuidv4();
   const order = data.order ?? (await getNextOrder(tripId));
   const now = new Date().toISOString();
@@ -149,14 +160,33 @@ export async function createStop(tripId: string, data: CreateStopRequest): Promi
     await tx.execute('UPDATE trips SET updated_at = $1 WHERE id = $2', [now, tripId]);
   });
 
-  const stop = await getStopById(id);
-  if (!stop) throw new Error('Failed to create stop');
-  return stop;
+  // Return constructed object instead of re-querying
+  return {
+    id,
+    trip_id: tripId,
+    name: data.name,
+    type: data.type,
+    description: data.description || null,
+    latitude: data.latitude,
+    longitude: data.longitude,
+    duration_value: data.duration_value ?? null,
+    duration_unit: data.duration_unit ?? null,
+    is_optional: data.is_optional ?? false,
+    tags: data.tags || [],
+    links: data.links || [],
+    notes: data.notes || null,
+    order,
+    transport_type: data.transport_type || null,
+    departure_time: data.departure_time || null,
+    arrival_time: data.arrival_time || null,
+    departure_location: data.departure_location || null,
+    arrival_location: data.arrival_location || null,
+  };
 }
 
 export async function updateStop(id: string, updates: UpdateStopRequest): Promise<Stop | null> {
+  await ensureSchema();
   const adapter = getAdapter();
-  await adapter.initSchema();
 
   const stop = await getStopById(id);
   if (!stop) return null;
@@ -165,73 +195,93 @@ export async function updateStop(id: string, updates: UpdateStopRequest): Promis
   const values: unknown[] = [];
   let paramIndex = 1;
 
+  // Build updated stop object as we go
+  const updatedStop = { ...stop };
+
   if (updates.name !== undefined) {
     fields.push(`name = $${paramIndex++}`);
     values.push(updates.name);
+    updatedStop.name = updates.name;
   }
   if (updates.type !== undefined) {
     fields.push(`type = $${paramIndex++}`);
     values.push(updates.type);
+    updatedStop.type = updates.type;
   }
   if (updates.description !== undefined) {
     fields.push(`description = $${paramIndex++}`);
     values.push(updates.description);
+    updatedStop.description = updates.description;
   }
   if (updates.latitude !== undefined) {
     fields.push(`latitude = $${paramIndex++}`);
     values.push(updates.latitude);
+    updatedStop.latitude = updates.latitude;
   }
   if (updates.longitude !== undefined) {
     fields.push(`longitude = $${paramIndex++}`);
     values.push(updates.longitude);
+    updatedStop.longitude = updates.longitude;
   }
   if (updates.duration_value !== undefined) {
     fields.push(`duration_value = $${paramIndex++}`);
     values.push(updates.duration_value);
+    updatedStop.duration_value = updates.duration_value;
   }
   if (updates.duration_unit !== undefined) {
     fields.push(`duration_unit = $${paramIndex++}`);
     values.push(updates.duration_unit);
+    updatedStop.duration_unit = updates.duration_unit;
   }
   if (updates.is_optional !== undefined) {
     fields.push(`is_optional = $${paramIndex++}`);
     values.push(updates.is_optional ? 1 : 0);
+    updatedStop.is_optional = updates.is_optional;
   }
   if (updates.tags !== undefined) {
     fields.push(`tags = $${paramIndex++}`);
     values.push(JSON.stringify(updates.tags));
+    updatedStop.tags = updates.tags;
   }
   if (updates.links !== undefined) {
     fields.push(`links = $${paramIndex++}`);
     values.push(JSON.stringify(updates.links));
+    updatedStop.links = updates.links;
   }
   if (updates.notes !== undefined) {
     fields.push(`notes = $${paramIndex++}`);
     values.push(updates.notes);
+    updatedStop.notes = updates.notes;
   }
   if (updates.order !== undefined) {
     fields.push(`"order" = $${paramIndex++}`);
     values.push(updates.order);
+    updatedStop.order = updates.order;
   }
   if (updates.transport_type !== undefined) {
     fields.push(`transport_type = $${paramIndex++}`);
     values.push(updates.transport_type);
+    updatedStop.transport_type = updates.transport_type;
   }
   if (updates.departure_time !== undefined) {
     fields.push(`departure_time = $${paramIndex++}`);
     values.push(updates.departure_time);
+    updatedStop.departure_time = updates.departure_time;
   }
   if (updates.arrival_time !== undefined) {
     fields.push(`arrival_time = $${paramIndex++}`);
     values.push(updates.arrival_time);
+    updatedStop.arrival_time = updates.arrival_time;
   }
   if (updates.departure_location !== undefined) {
     fields.push(`departure_location = $${paramIndex++}`);
     values.push(updates.departure_location);
+    updatedStop.departure_location = updates.departure_location;
   }
   if (updates.arrival_location !== undefined) {
     fields.push(`arrival_location = $${paramIndex++}`);
     values.push(updates.arrival_location);
+    updatedStop.arrival_location = updates.arrival_location;
   }
 
   if (fields.length === 0) return stop;
@@ -246,12 +296,12 @@ export async function updateStop(id: string, updates: UpdateStopRequest): Promis
     await tx.execute('UPDATE trips SET updated_at = $1 WHERE id = $2', [now, stop.trip_id]);
   });
 
-  return getStopById(id);
+  return updatedStop;
 }
 
 export async function deleteStop(id: string): Promise<boolean> {
+  await ensureSchema();
   const adapter = getAdapter();
-  await adapter.initSchema();
 
   const stop = await getStopById(id);
   if (!stop) return false;
@@ -274,8 +324,8 @@ export async function deleteStop(id: string): Promise<boolean> {
 }
 
 export async function reorderStops(tripId: string, stopIds: string[]): Promise<boolean> {
+  await ensureSchema();
   const adapter = getAdapter();
-  await adapter.initSchema();
   const now = new Date().toISOString();
 
   await adapter.transaction(async (tx) => {
@@ -308,8 +358,8 @@ export async function getTripWithStops(
 // ============================================================================
 
 export async function getSetting(key: string): Promise<string | null> {
+  await ensureSchema();
   const adapter = getAdapter();
-  await adapter.initSchema();
   const row = await adapter.queryOne<{ value: string }>('SELECT value FROM settings WHERE key = $1', [
     key,
   ]);
@@ -317,8 +367,8 @@ export async function getSetting(key: string): Promise<string | null> {
 }
 
 export async function setSetting(key: string, value: string): Promise<void> {
+  await ensureSchema();
   const adapter = getAdapter();
-  await adapter.initSchema();
 
   // Use INSERT ... ON CONFLICT for upsert (works in both SQLite and PostgreSQL)
   await adapter.execute(
@@ -329,8 +379,8 @@ export async function setSetting(key: string, value: string): Promise<void> {
 }
 
 export async function deleteSetting(key: string): Promise<void> {
+  await ensureSchema();
   const adapter = getAdapter();
-  await adapter.initSchema();
   await adapter.execute('DELETE FROM settings WHERE key = $1', [key]);
 }
 
@@ -341,22 +391,31 @@ export async function deleteSetting(key: string): Promise<void> {
 export async function getConversation(
   tripId: string
 ): Promise<{ id: string; messages: Message[] } | null> {
+  await ensureSchema();
   const adapter = getAdapter();
-  await adapter.initSchema();
   const row = await adapter.queryOne<ConversationRow>(
     'SELECT * FROM conversations WHERE trip_id = $1',
     [tripId]
   );
   if (!row) return null;
+
+  // Safe JSON parse with fallback
+  let messages: Message[] = [];
+  try {
+    messages = JSON.parse(row.messages);
+  } catch {
+    console.error('Failed to parse conversation messages JSON');
+  }
+
   return {
     id: row.id,
-    messages: JSON.parse(row.messages),
+    messages,
   };
 }
 
 export async function saveConversation(tripId: string, messages: Message[]): Promise<void> {
+  await ensureSchema();
   const adapter = getAdapter();
-  await adapter.initSchema();
   const existing = await getConversation(tripId);
   const now = new Date().toISOString();
 
@@ -376,7 +435,7 @@ export async function saveConversation(tripId: string, messages: Message[]): Pro
 }
 
 export async function clearConversation(tripId: string): Promise<void> {
+  await ensureSchema();
   const adapter = getAdapter();
-  await adapter.initSchema();
   await adapter.execute('DELETE FROM conversations WHERE trip_id = $1', [tripId]);
 }
