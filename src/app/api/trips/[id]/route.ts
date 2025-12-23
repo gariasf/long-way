@@ -8,7 +8,7 @@ type RouteContext = { params: Promise<{ id: string }> };
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
-    const result = getTripWithStops(id);
+    const result = await getTripWithStops(id);
 
     if (!result) {
       return NextResponse.json({ error: 'Trip not found' }, { status: 404 });
@@ -29,7 +29,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     const { id } = await context.params;
     const body = await request.json();
 
-    const existing = getTripById(id);
+    const existing = await getTripById(id);
     if (!existing) {
       return NextResponse.json({ error: 'Trip not found' }, { status: 404 });
     }
@@ -39,7 +39,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: getZodErrorMessage(result.error) }, { status: 400 });
     }
 
-    const trip = updateTrip(id, result.data);
+    const trip = await updateTrip(id, result.data);
     return NextResponse.json(trip);
   } catch (error) {
     console.error('Error updating trip:', error);
@@ -52,12 +52,12 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
 
-    const existing = getTripById(id);
+    const existing = await getTripById(id);
     if (!existing) {
       return NextResponse.json({ error: 'Trip not found' }, { status: 404 });
     }
 
-    deleteTrip(id);
+    await deleteTrip(id);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error deleting trip:', error);

@@ -5,7 +5,7 @@ import { createTripSchema, getZodErrorMessage } from '@/lib/schemas';
 // GET /api/trips - List all trips
 export async function GET() {
   try {
-    const trips = getAllTrips();
+    const trips = await getAllTrips();
     return NextResponse.json(trips, {
       headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' },
     });
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: getZodErrorMessage(result.error) }, { status: 400 });
     }
 
-    const trip = createTrip(result.data.name, result.data.description);
+    const trip = await createTrip(result.data.name, result.data.description);
     return NextResponse.json(trip, { status: 201 });
   } catch (error) {
     console.error('Error creating trip:', error);

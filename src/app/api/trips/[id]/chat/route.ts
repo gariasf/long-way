@@ -19,7 +19,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     // Get API key
-    const apiKey = getSetting('anthropic_api_key');
+    const apiKey = await getSetting('anthropic_api_key');
     if (!apiKey) {
       return NextResponse.json(
         { error: 'Anthropic API key not configured. Please add it in Settings.' },
@@ -28,13 +28,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     // Get trip info
-    const trip = getTripById(tripId);
+    const trip = await getTripById(tripId);
     if (!trip) {
       return NextResponse.json({ error: 'Trip not found' }, { status: 404 });
     }
 
     // Get current stops from database (not from request - saves bandwidth)
-    let currentStops = getStopsByTripId(tripId);
+    let currentStops = await getStopsByTripId(tripId);
 
     // Initialize Anthropic client
     const anthropic = new Anthropic({ apiKey });
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
           finalResponse = block.text;
         } else if (block.type === 'tool_use') {
           hasToolUse = true;
-          const toolResult = handleToolCall(
+          const toolResult = await handleToolCall(
             block.name,
             block.input as Record<string, unknown>,
             tripId,

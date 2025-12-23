@@ -8,7 +8,7 @@ type RouteContext = { params: Promise<{ id: string }> };
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
-    const stop = getStopById(id);
+    const stop = await getStopById(id);
 
     if (!stop) {
       return NextResponse.json({ error: 'Stop not found' }, { status: 404 });
@@ -27,7 +27,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     const { id } = await context.params;
     const body = await request.json();
 
-    const existing = getStopById(id);
+    const existing = await getStopById(id);
     if (!existing) {
       return NextResponse.json({ error: 'Stop not found' }, { status: 404 });
     }
@@ -37,7 +37,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: getZodErrorMessage(result.error) }, { status: 400 });
     }
 
-    const stop = updateStop(id, result.data);
+    const stop = await updateStop(id, result.data);
     return NextResponse.json(stop);
   } catch (error) {
     console.error('Error updating stop:', error);
@@ -50,12 +50,12 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
 
-    const existing = getStopById(id);
+    const existing = await getStopById(id);
     if (!existing) {
       return NextResponse.json({ error: 'Stop not found' }, { status: 404 });
     }
 
-    deleteStop(id);
+    await deleteStop(id);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error deleting stop:', error);
