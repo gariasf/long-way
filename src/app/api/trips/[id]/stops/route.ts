@@ -9,12 +9,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { id } = await context.params;
 
-    const trip = getTripById(id);
+    const trip = await getTripById(id);
     if (!trip) {
       return NextResponse.json({ error: 'Trip not found' }, { status: 404 });
     }
 
-    const stops = getStopsByTripId(id);
+    const stops = await getStopsByTripId(id);
     return NextResponse.json(stops, {
       headers: { 'Cache-Control': 'private, max-age=10, stale-while-revalidate=60' },
     });
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const { id: tripId } = await context.params;
     const body = await request.json();
 
-    const trip = getTripById(tripId);
+    const trip = await getTripById(tripId);
     if (!trip) {
       return NextResponse.json({ error: 'Trip not found' }, { status: 404 });
     }
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: getZodErrorMessage(result.error) }, { status: 400 });
     }
 
-    const stop = createStop(tripId, result.data);
+    const stop = await createStop(tripId, result.data);
     return NextResponse.json(stop, { status: 201 });
   } catch (error) {
     console.error('Error creating stop:', error);
@@ -54,7 +54,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const { id: tripId } = await context.params;
     const body = await request.json();
 
-    const trip = getTripById(tripId);
+    const trip = await getTripById(tripId);
     if (!trip) {
       return NextResponse.json({ error: 'Trip not found' }, { status: 404 });
     }
@@ -65,15 +65,15 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
 
     // Verify all stopIds belong to this trip
-    const existingStops = getStopsByTripId(tripId);
+    const existingStops = await getStopsByTripId(tripId);
     const validIds = new Set(existingStops.map(s => s.id));
     const invalidIds = result.data.stopIds.filter(id => !validIds.has(id));
     if (invalidIds.length > 0) {
       return NextResponse.json({ error: 'Some stop IDs do not belong to this trip' }, { status: 400 });
     }
 
-    reorderStops(tripId, result.data.stopIds);
-    const stops = getStopsByTripId(tripId);
+    await reorderStops(tripId, result.data.stopIds);
+    const stops = await getStopsByTripId(tripId);
 
     return NextResponse.json(stops);
   } catch (error) {

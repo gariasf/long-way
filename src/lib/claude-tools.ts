@@ -139,13 +139,13 @@ export const tools: Anthropic.Tool[] = [
   },
 ];
 
-// Tool handler
-export function handleToolCall(
+// Tool handler (async to support async database operations)
+export async function handleToolCall(
   toolName: string,
   toolInput: Record<string, unknown>,
   tripId: string,
   currentStops: Stop[]
-): { result: string; stops?: Stop[] } {
+): Promise<{ result: string; stops?: Stop[] }> {
   switch (toolName) {
     case 'get_trip_info': {
       const stopsInfo = currentStops.map((s, i) => ({
@@ -200,8 +200,8 @@ export function handleToolCall(
         links: [],
       };
 
-      const newStop = createStop(tripId, stopData);
-      const updatedStops = getStopsByTripId(tripId);
+      const newStop = await createStop(tripId, stopData);
+      const updatedStops = await getStopsByTripId(tripId);
 
       return {
         result: `Added stop "${newStop.name}" (${newStop.type}) at position ${updatedStops.length}`,
@@ -211,13 +211,13 @@ export function handleToolCall(
 
     case 'update_stop': {
       const { stop_id, ...updates } = toolInput as { stop_id: string } & Record<string, unknown>;
-      const updatedStop = updateStop(stop_id, updates);
+      const updatedStop = await updateStop(stop_id, updates);
 
       if (!updatedStop) {
         return { result: `Stop with ID ${stop_id} not found` };
       }
 
-      const updatedStops = getStopsByTripId(tripId);
+      const updatedStops = await getStopsByTripId(tripId);
       return {
         result: `Updated stop "${updatedStop.name}"`,
         stops: updatedStops,
@@ -232,8 +232,8 @@ export function handleToolCall(
         return { result: `Stop with ID ${stop_id} not found` };
       }
 
-      deleteStop(stop_id);
-      const updatedStops = getStopsByTripId(tripId);
+      await deleteStop(stop_id);
+      const updatedStops = await getStopsByTripId(tripId);
 
       return {
         result: `Removed stop "${stop.name}"`,
@@ -243,8 +243,8 @@ export function handleToolCall(
 
     case 'reorder_stops': {
       const { stop_ids } = toolInput as { stop_ids: string[] };
-      reorderStops(tripId, stop_ids);
-      const updatedStops = getStopsByTripId(tripId);
+      await reorderStops(tripId, stop_ids);
+      const updatedStops = await getStopsByTripId(tripId);
 
       return {
         result: `Reordered ${stop_ids.length} stops`,

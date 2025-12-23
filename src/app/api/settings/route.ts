@@ -13,7 +13,7 @@ function maskApiKey(key: string): string {
 // GET /api/settings - Get settings (API key masked, never exposed)
 export async function GET() {
   try {
-    const apiKey = getSetting(API_KEY_SETTING);
+    const apiKey = await getSetting(API_KEY_SETTING);
     return NextResponse.json({
       hasApiKey: !!apiKey,
       keyPreview: apiKey ? maskApiKey(apiKey) : null,
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
 
     // Handle empty apiKey as delete request
     if (body.apiKey === '' || body.apiKey === null) {
-      deleteSetting(API_KEY_SETTING);
+      await deleteSetting(API_KEY_SETTING);
       return NextResponse.json({ success: true });
     }
 
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: getZodErrorMessage(result.error) }, { status: 400 });
     }
 
-    setSetting(API_KEY_SETTING, result.data.apiKey);
+    await setSetting(API_KEY_SETTING, result.data.apiKey);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error saving settings:', error);

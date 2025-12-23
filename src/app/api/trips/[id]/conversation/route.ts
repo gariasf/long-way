@@ -9,12 +9,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { id: tripId } = await context.params;
 
-    const trip = getTripById(tripId);
+    const trip = await getTripById(tripId);
     if (!trip) {
       return NextResponse.json({ error: 'Trip not found' }, { status: 404 });
     }
 
-    const conversation = getConversation(tripId);
+    const conversation = await getConversation(tripId);
     return NextResponse.json({
       messages: conversation?.messages || [],
     });
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const { id: tripId } = await context.params;
     const body = await request.json();
 
-    const trip = getTripById(tripId);
+    const trip = await getTripById(tripId);
     if (!trip) {
       return NextResponse.json({ error: 'Trip not found' }, { status: 404 });
     }
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: getZodErrorMessage(result.error) }, { status: 400 });
     }
 
-    saveConversation(tripId, result.data.messages);
+    await saveConversation(tripId, result.data.messages);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error saving conversation:', error);
@@ -53,12 +53,12 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
     const { id: tripId } = await context.params;
 
-    const trip = getTripById(tripId);
+    const trip = await getTripById(tripId);
     if (!trip) {
       return NextResponse.json({ error: 'Trip not found' }, { status: 404 });
     }
 
-    clearConversation(tripId);
+    await clearConversation(tripId);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error clearing conversation:', error);
